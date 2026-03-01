@@ -1,6 +1,45 @@
+/**
+ * This source code has been heavily derived from the official AdaFruit BME280 library.
+ * I have ported the drivers over to esp-idf and C++ for use on my own esp32.
+ * I am using this with the AdaFruit BME280 sensor.
+ *
+ * This is the original license for this source file and the included header "bme280.hpp":
+ *
+ * Copyright (c) 2015, Limor Fried & Kevin Townsend for Adafruit Industries
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright
+ *   notice, this list of conditions and the following disclaimer in the
+ *   documentation and/or other materials provided with the distribution.
+ * * Neither the name of Adafruit Industries nor the names of its
+ *   contributors may be used to endorse or promote products derived from
+ *   this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
 #include "bme280.hpp"
 #include "esp_log.h"
 #include <cstring>
+
+#define I2C_MASTER_NUM I2C_NUM_0
+#define I2C_MASTER_SDA_IO 21
+#define I2C_MASTER_SCL_IO 22
+#define I2C_MASTER_FREQ_HZ 100000
 
 static const char *TAG = "BME280";
 
@@ -8,6 +47,22 @@ BME280::BME280(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr) {}
 
 bool BME280::init() {
+    if (!i2cInitialised) {
+        i2c_config_t conf{};
+        conf.mode = I2C_MODE_MASTER;
+        conf.sda_io_num = I2C_MASTER_SDA_IO;
+        conf.scl_io_num = I2C_MASTER_SCL_IO;
+        conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
+        conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
+        conf.master.clk_speed = I2C_MASTER_FREQ_HZ;
+        i2c_param_config(I2C_MASTER_NUM, &conf);
+        esp_err_t ret = i2c_driver_install(I2C_MASTER_NUM, conf.mode, 0, 0, 0);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to install I2C driver");
+            return false;
+        }
+        i2cInitialised = true;
+    }
     if (read8(REG_ID) != 0x60) {
         ESP_LOGE(TAG, "Wrong BME280 ID!");
         return false;
@@ -55,28 +110,6 @@ bool BME280::readCalibration() {
 
 void BME280::setSampling() const {
     /**
-     * filter settings
-     * 000 = filter off
-     * 001 = 2x filter
-     * 010 = 4x filter
-     * 011 = 8x filter
-     * 100 and above = 16x filter
-     */
-    const std::uint32_t filter = 0;
-    /**
-     * inactive duration (standby time) in normal mode
-     * 000 = 0.5 ms
-     * 001 = 62.5 ms
-     * 010 = 125 ms
-     * 011 = 250 ms
-     * 100 = 500 ms
-     * 101 = 1000 ms
-     * 110 = 10 ms
-     * 111 = 20 ms
-     */
-    const std::uint32_t dur = 0;
-    const std::uint32_t configReg = (dur << 5) | (filter << 2) | 0;
-    /**
      * temperature oversampling
      * 000 = skipped
      * 001 = x1
@@ -113,8 +146,30 @@ void BME280::setSampling() const {
      * 100 = x8
      * 101 and above = x16
      */
-    const std::uint32_t humReg = 5;
-    write8(REG_CTRL, 0b00); // Mode sleep
+    const std::uint32_t humReg = 4;
+    /**
+     * filter settings
+     * 000 = filter off
+     * 001 = 2x filter
+     * 010 = 4x filter
+     * 011 = 8x filter
+     * 100 and above = 16x filter
+     */
+    const std::uint32_t filter = 0;
+    /**
+     * inactive duration (standby time) in normal mode
+     * 000 = 0.5 ms
+     * 001 = 62.5 ms
+     * 010 = 125 ms
+     * 011 = 250 ms
+     * 100 = 500 ms
+     * 101 = 1000 ms
+     * 110 = 10 ms
+     * 111 = 20 ms
+     */
+    const std::uint32_t dur = 0;
+    const std::uint32_t configReg = (dur << 5) | (filter << 2) | 0;
+    write8(REG_CTRL, measReg & ~0x03); // Mode sleep
     write8(REG_CTRL_HUM, humReg);
     write8(REG_CONFIG, configReg);
     write8(REG_CTRL, measReg);
@@ -164,7 +219,7 @@ float BME280::readHumidity() {
     var3 = (var1 * calib.dig_H3) >> 11;
     var4 = ((var2 * (var3 + 32768)) >> 10) + 2097152;
     var2 = ((var4 * calib.dig_H2) + 8192) >> 14;
-    var3 = var5 + var2;
+    var3 = var5 * var2;
     var4 = ((var3 >> 15) * (var3 >> 15)) >> 7;
     var5 = var3 - ((var4 * calib.dig_H1) >> 4);
     var5 = var5 < 0 ? 0 : var5;
