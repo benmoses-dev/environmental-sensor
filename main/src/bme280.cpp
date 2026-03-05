@@ -34,6 +34,8 @@
  */
 #include "bme280.hpp"
 #include "esp_log.h"
+#include "utils.hpp"
+#include <cmath>
 #include <cstring>
 
 #define I2C_MASTER_NUM I2C_NUM_0
@@ -146,7 +148,7 @@ void BME280::setSampling() const {
      * 100 = x8
      * 101 and above = x16
      */
-    const std::uint32_t humReg = 4;
+    const std::uint32_t humReg = 5;
     /**
      * filter settings
      * 000 = filter off
@@ -234,6 +236,15 @@ void BME280::setTemperatureCompensation(const float adjustment) {
 
 float BME280::getTemperatureCompensation() const {
     return static_cast<float>((t_fine_adjust * 5) >> 8) / 100.0f;
+}
+
+float BME280::readAltitude(const float seaLevelPressure) {
+    const float atmospheric = readPressure() / 100.0F;
+    return 44330.0 * (1.0 - pow(atmospheric / seaLevelPressure, 0.1903));
+}
+
+float BME280::seaLevelForAltitude(const float altitude, const float atmospheric) {
+    return atmospheric / pow(1.0 - (altitude / 44330.0), 5.255);
 }
 
 std::uint8_t BME280::read8(std::uint8_t reg) const {

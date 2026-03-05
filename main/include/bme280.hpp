@@ -1,8 +1,13 @@
 #pragma once
 
 #include "driver/i2c.h"
-#include <cmath>
 #include <cstdint>
+#include <ctime>
+
+struct Event {
+    float val;
+    time_t timestamp;
+};
 
 class BME280 {
   public:
@@ -12,6 +17,8 @@ class BME280 {
     float readTemperature();
     float readPressure();
     float readHumidity();
+    float readAltitude(const float seaLevel);
+    float seaLevelForAltitude(const float altitude, const float atmospheric);
     void setTemperatureCompensation(const float adjustment);
     float getTemperatureCompensation() const;
 
@@ -66,6 +73,4 @@ class BME280 {
     std::int16_t readS16_LE(std::uint8_t reg) const;
     std::uint32_t read24(std::uint8_t reg) const;
     void write8(std::uint8_t reg, std::uint8_t value) const;
-
-    static void delay_ms(std::uint32_t ms) { vTaskDelay(ms / portTICK_PERIOD_MS); }
 };

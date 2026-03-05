@@ -2,3 +2,4 @@
 /**/build/
 /sdkconfig
 /**/compile_commands.json
+/**/config.h
