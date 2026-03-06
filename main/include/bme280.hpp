@@ -4,9 +4,16 @@
 #include <cstdint>
 #include <ctime>
 
+enum EventType {
+    TEMP,
+    HUM,
+    PRES,
+};
+
 struct Event {
     float val;
     time_t timestamp;
+    EventType type;
 };
 
 class BME280 {

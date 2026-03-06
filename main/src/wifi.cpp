@@ -1,40 +1,45 @@
-#include "network.hpp"
+#include "wifi.hpp"
 #include "config.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_sntp.h"
-#include "esp_wifi.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include "utils.hpp"
 #include <cstdint>
 #include <cstring>
 
 static const char *TAG = "NETWORK";
 static EventGroupHandle_t weg;
 static const int WIFI_CONNECTED_BIT = BIT0;
-static volatile bool wifi_connected = false;
+volatile bool WIFI::connected = false;
 
 static void wifiEventHandler(void *arg, esp_event_base_t base, std::int32_t id,
                              void *data) {
-    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
+    if (id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     }
-    if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+    if (id == WIFI_EVENT_STA_DISCONNECTED) {
         ESP_LOGI(TAG, "Retrying connection...");
-        delay_ms(1000);
-        wifi_connected = false;
+        WIFI::connected = false;
         esp_wifi_connect();
-    }
-    if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
-        ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
-        wifi_connected = true;
-        xEventGroupSetBits(weg, WIFI_CONNECTED_BIT);
     }
 }
 
-bool wifiConnect(void) {
+static void ipEventHandler(void *arg, esp_event_base_t base, std::int32_t id,
+                           void *data) {
+    if (id == IP_EVENT_STA_GOT_IP) {
+        ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
+        ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
+        WIFI::connected = true;
+        xEventGroupSetBits(weg, WIFI_CONNECTED_BIT);
+    }
+    if (id == IP_EVENT_STA_LOST_IP) {
+        ESP_LOGI(TAG, "Lost IP...");
+        WIFI::connected = false;
+    }
+}
+
+bool WIFI::init(void) {
     ESP_LOGI(TAG, "Initialising NVS...");
     esp_err_t res = nvs_flash_init();
     if (res != ESP_OK) {
@@ -77,12 +82,10 @@ bool wifiConnect(void) {
         }
     }
     weg = xEventGroupCreate();
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
     esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifiEventHandler,
-                                        NULL, &instance_any_id);
-    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifiEventHandler,
-                                        NULL, &instance_got_ip);
+                                        NULL, &wifiH);
+    esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, &ipEventHandler, NULL,
+                                        &ipH);
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_LOGI(TAG, "WiFi init...");
     res = esp_wifi_init(&cfg);
@@ -169,7 +172,7 @@ bool wifiConnect(void) {
     return false;
 }
 
-void initialiseSNTP(void) {
+void WIFI::initialiseSNTP(void) const {
     ESP_LOGI(TAG, "Initialising SNTP...");
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
@@ -178,7 +181,7 @@ void initialiseSNTP(void) {
     ESP_LOGI(TAG, "Done");
 }
 
-bool obtainTime(void) {
+bool WIFI::initTime(void) const {
     initialiseSNTP();
     time_t now = 0;
     struct tm timeinfo;
@@ -202,10 +205,4 @@ bool obtainTime(void) {
     }
 }
 
-time_t getTime() {
-    time_t now;
-    struct tm timeinfo;
-    time(&now);
-    localtime_r(&now, &timeinfo);
-    return now;
-}
+time_t WIFI::getTime() const { return time(NULL); }
