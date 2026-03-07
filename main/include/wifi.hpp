@@ -8,10 +8,10 @@ class WIFI {
   public:
     explicit WIFI();
     ~WIFI();
-    static volatile bool CONNECTED;
     static const std::int32_t CONNECTED_BIT = BIT0;
-    bool init(void);
-    bool initTime(void) const;
+    volatile bool connected;
+    bool init();
+    bool initTime() const;
     time_t getTime() const;
 
   private:
@@ -20,7 +20,7 @@ class WIFI {
     esp_event_handler_instance_t wifiH;
     esp_event_handler_instance_t ipH;
     EventGroupHandle_t weg;
-    void initialiseSNTP(void) const;
+    void initialiseSNTP() const;
     static void wifiEventHandler(void *arg, esp_event_base_t base, std::int32_t id,
                                  void *data);
     static void ipEventHandler(void *arg, esp_event_base_t base, std::int32_t id,

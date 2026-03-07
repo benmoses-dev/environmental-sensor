@@ -72,7 +72,7 @@ class BME280 {
     static constexpr std::uint8_t REG_HUM_MSB = 0xFD;
 
     bool isReadingCalibration() const;
-    bool readCalibration();
+    void readCalibration();
     void setSampling() const;
     std::uint8_t read8(std::uint8_t reg) const;
     std::uint16_t read16(std::uint8_t reg) const;

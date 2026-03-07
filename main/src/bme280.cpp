@@ -48,9 +48,7 @@ static const char *TAG = "BME280";
 BME280::BME280(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr) {}
 
-BME280::~BME280() {
-    //
-}
+BME280::~BME280() {}
 
 bool BME280::init() {
     if (!i2cInitialised) {
@@ -61,9 +59,13 @@ bool BME280::init() {
         conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
         conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
         conf.master.clk_speed = I2C_MASTER_FREQ_HZ;
-        i2c_param_config(I2C_MASTER_NUM, &conf);
-        esp_err_t ret = i2c_driver_install(I2C_MASTER_NUM, conf.mode, 0, 0, 0);
-        if (ret != ESP_OK) {
+        esp_err_t res = i2c_param_config(I2C_MASTER_NUM, &conf);
+        if (res != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to configure i2c params!");
+            return false;
+        }
+        res = i2c_driver_install(I2C_MASTER_NUM, conf.mode, 0, 0, 0);
+        if (res != ESP_OK) {
             ESP_LOGE(TAG, "Failed to install I2C driver");
             return false;
         }
@@ -81,6 +83,7 @@ bool BME280::init() {
     readCalibration();
     setSampling();
     delay_ms(100);
+    ESP_LOGI(TAG, "BME280 initialised successfully!");
     return true;
 }
 
@@ -89,7 +92,7 @@ bool BME280::isReadingCalibration() const {
     return (rStatus & (1 << 0)) != 0;
 }
 
-bool BME280::readCalibration() {
+void BME280::readCalibration() {
     calib.dig_T1 = static_cast<std::int32_t>(read16_LE(0x88));
     calib.dig_T2 = static_cast<std::int32_t>(readS16_LE(0x8A));
     calib.dig_T3 = static_cast<std::int32_t>(readS16_LE(0x8C));
@@ -110,8 +113,6 @@ bool BME280::readCalibration() {
     calib.dig_H4 = static_cast<std::int32_t>((read8(0xE4) << 4) | (read8(0xE5) & 0xF));
     calib.dig_H5 = static_cast<std::int32_t>((read8(0xE6) << 4) | (read8(0xE5) >> 4));
     calib.dig_H6 = static_cast<std::int32_t>(read8(0xE7));
-
-    return true;
 }
 
 void BME280::setSampling() const {
