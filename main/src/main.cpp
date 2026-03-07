@@ -2,12 +2,14 @@
 #include "esp_log.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "mqtt.hpp"
 #include "utils.hpp"
 #include "wifi.hpp"
 
 static const char *TAG = "MAIN";
 
 WIFI wifi;
+MQTT mqtt;
 BME280 bme;
 QueueHandle_t eventQueue;
 
@@ -28,7 +30,7 @@ void readTask(void *pvParameters) {
 void logTask(void *pvParameters) {
     Event event;
     while (true) {
-        if (!WIFI::connected) {
+        if (!WIFI::CONNECTED) {
             delay_ms(1000);
             continue;
         }

@@ -5,39 +5,52 @@
 #include "esp_sntp.h"
 #include "nvs.h"
 #include "nvs_flash.h"
-#include <cstdint>
 #include <cstring>
 
 static const char *TAG = "NETWORK";
-static EventGroupHandle_t weg;
-static const int WIFI_CONNECTED_BIT = BIT0;
-volatile bool WIFI::connected = false;
+volatile bool WIFI::CONNECTED = false;
 
-static void wifiEventHandler(void *arg, esp_event_base_t base, std::int32_t id,
-                             void *data) {
-    if (id == WIFI_EVENT_STA_START) {
+void WIFI::wifiEventHandler(void *arg, esp_event_base_t base, std::int32_t id,
+                            void *data) {
+    WIFI *self = static_cast<WIFI *>(arg);
+    switch (id) {
+    case WIFI_EVENT_STA_START:
         esp_wifi_connect();
-    }
-    if (id == WIFI_EVENT_STA_DISCONNECTED) {
+        break;
+    case WIFI_EVENT_STA_DISCONNECTED:
         ESP_LOGI(TAG, "Retrying connection...");
-        WIFI::connected = false;
+        xEventGroupClearBits(self->weg, WIFI::CONNECTED_BIT);
+        WIFI::CONNECTED = false;
         esp_wifi_connect();
+        break;
+    default:
+        break;
     }
 }
 
-static void ipEventHandler(void *arg, esp_event_base_t base, std::int32_t id,
-                           void *data) {
-    if (id == IP_EVENT_STA_GOT_IP) {
-        ip_event_got_ip_t *event = (ip_event_got_ip_t *)data;
+void WIFI::ipEventHandler(void *arg, esp_event_base_t base, std::int32_t id, void *data) {
+    WIFI *self = static_cast<WIFI *>(arg);
+    ip_event_got_ip_t *event;
+    switch (id) {
+    case IP_EVENT_STA_GOT_IP:
+        event = (ip_event_got_ip_t *)data;
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
-        WIFI::connected = true;
-        xEventGroupSetBits(weg, WIFI_CONNECTED_BIT);
-    }
-    if (id == IP_EVENT_STA_LOST_IP) {
+        WIFI::CONNECTED = true;
+        xEventGroupSetBits(self->weg, WIFI::CONNECTED_BIT);
+        break;
+    case IP_EVENT_STA_LOST_IP:
         ESP_LOGI(TAG, "Lost IP...");
-        WIFI::connected = false;
+        xEventGroupClearBits(self->weg, WIFI::CONNECTED_BIT);
+        WIFI::CONNECTED = false;
+        break;
+    default:
+        break;
     }
 }
+
+WIFI::WIFI() : ssid(CONFIG_WIFI_SSID), pass(CONFIG_WIFI_PASS) {}
+
+WIFI::~WIFI() {}
 
 bool WIFI::init(void) {
     ESP_LOGI(TAG, "Initialising NVS...");
@@ -82,10 +95,10 @@ bool WIFI::init(void) {
         }
     }
     weg = xEventGroupCreate();
-    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifiEventHandler,
-                                        NULL, &wifiH);
-    esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, &ipEventHandler, NULL,
-                                        &ipH);
+    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                        &WIFI::wifiEventHandler, this, &wifiH);
+    esp_event_handler_instance_register(IP_EVENT, ESP_EVENT_ANY_ID, &WIFI::ipEventHandler,
+                                        this, &ipH);
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_LOGI(TAG, "WiFi init...");
     res = esp_wifi_init(&cfg);
@@ -100,9 +113,8 @@ bool WIFI::init(void) {
         }
     }
     wifi_config_t wifi_config = {};
-    strncpy((char *)wifi_config.sta.ssid, CONFIG_WIFI_SSID, sizeof(wifi_config.sta.ssid));
-    strncpy((char *)wifi_config.sta.password, CONFIG_WIFI_PASSWORD,
-            sizeof(wifi_config.sta.password));
+    strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
+    strncpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
     ESP_LOGI(TAG, "Setting WiFi mode...");
     res = esp_wifi_set_mode(WIFI_MODE_STA);
     if (res != ESP_OK) {
@@ -164,8 +176,8 @@ bool WIFI::init(void) {
         }
     }
     const EventBits_t bits =
-        xEventGroupWaitBits(weg, WIFI_CONNECTED_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
-    if (bits & WIFI_CONNECTED_BIT) {
+        xEventGroupWaitBits(weg, WIFI::CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+    if (bits & WIFI::CONNECTED_BIT) {
         ESP_LOGI(TAG, "WiFi connected!");
         return true;
     }

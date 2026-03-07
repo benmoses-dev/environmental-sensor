@@ -48,6 +48,10 @@ static const char *TAG = "BME280";
 BME280::BME280(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr) {}
 
+BME280::~BME280() {
+    //
+}
+
 bool BME280::init() {
     if (!i2cInitialised) {
         i2c_config_t conf{};

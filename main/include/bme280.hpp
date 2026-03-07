@@ -19,6 +19,7 @@ struct Event {
 class BME280 {
   public:
     explicit BME280(const i2c_port_t port = I2C_NUM_0, const std::uint8_t addr = 0x76);
+    ~BME280();
 
     bool init();
     float readTemperature();
