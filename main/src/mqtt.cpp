@@ -48,7 +48,7 @@ bool MQTT::publish(const char *topic, const char *message) {
     const std::size_t len = 64;
     char buf[len];
     getTopic(topic, buf, len);
-    const std::int32_t res = esp_mqtt_client_publish(client, buf, message, 0, 2, 1);
+    const std::int32_t res = esp_mqtt_client_publish(client, buf, message, 0, 2, 0);
     if (res < 0) {
         ESP_LOGW(TAG, "Error publishing message!");
         return false;
