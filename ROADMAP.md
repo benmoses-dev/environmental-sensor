@@ -21,13 +21,5 @@
   - Weighted sensor fusion
 - Evaluate accuracy against real measurements
 
-### Stage 3 - Edge Anomaly Detection
-- Detect sensor anomalies and environmental events on-device
-  - Pollution spikes
-  - Ventilation failures
-  - Sensor malfunction
-- Lightweight ML or statistical models suitable for ESP32
-- Log anomalies for later analysis
-
 ---
 
