@@ -45,7 +45,7 @@ Example payload:
 ```json
 {
   "time": 1773430361,
-  "val": 46.48
+  "val": 20.48
 }
 ```
 
