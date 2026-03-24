@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.h"
 #include "driver/i2c.h"
 #include <cstdint>
 #include <ctime>
@@ -18,7 +19,8 @@ struct Event {
 
 class BME280 {
   public:
-    explicit BME280(const i2c_port_t port = I2C_NUM_0, const std::uint8_t addr = 0x76);
+    explicit BME280(const i2c_port_t port = I2C_MASTER_NUM,
+                    const std::uint8_t addr = BME280_ADDR);
     ~BME280();
 
     bool init();
