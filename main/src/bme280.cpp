@@ -38,14 +38,16 @@
 #include <cmath>
 #include <cstring>
 
+namespace BME280 {
+
 static const char *TAG = "BME280";
 
-BME280::BME280(const i2c_port_t port, const std::uint8_t addr)
+Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr) {}
 
-BME280::~BME280() {}
+Device::~Device() {}
 
-bool BME280::init() {
+bool Device::init() {
     if (!i2cInitialised) {
         i2c_config_t conf{};
         conf.mode = I2C_MODE_MASTER;
@@ -82,12 +84,12 @@ bool BME280::init() {
     return true;
 }
 
-bool BME280::isReadingCalibration() const {
+bool Device::isReadingCalibration() const {
     const std::uint8_t rStatus = read8(REG_STATUS);
     return (rStatus & (1 << 0)) != 0;
 }
 
-void BME280::readCalibration() {
+void Device::readCalibration() {
     calib.dig_T1 = static_cast<std::int32_t>(read16_LE(0x88));
     calib.dig_T2 = static_cast<std::int32_t>(readS16_LE(0x8A));
     calib.dig_T3 = static_cast<std::int32_t>(readS16_LE(0x8C));
@@ -110,7 +112,7 @@ void BME280::readCalibration() {
     calib.dig_H6 = static_cast<std::int32_t>(read8(0xE7));
 }
 
-void BME280::setSampling() const {
+void Device::setSampling() const {
     /**
      * temperature oversampling
      * 000 = skipped
@@ -177,7 +179,7 @@ void BME280::setSampling() const {
     write8(REG_CTRL, measReg);
 }
 
-float BME280::readTemperature() {
+float Device::readTemperature() {
     std::int32_t adc_T = read24(REG_TEMP_MSB) >> 4;
     std::int32_t var1 = (adc_T >> 3) - (calib.dig_T1 << 1);
     var1 = (var1 * calib.dig_T2) >> 11;
@@ -188,7 +190,7 @@ float BME280::readTemperature() {
     return static_cast<float>(T) / 100.0f;
 }
 
-float BME280::readPressure() {
+float Device::readPressure() {
     readTemperature(); // must compute t_fine
     std::int32_t adc_P = read24(REG_PRESS_MSB) >> 4;
     std::int64_t var1 = static_cast<std::int64_t>(t_fine) - 128000;
@@ -209,7 +211,7 @@ float BME280::readPressure() {
     return static_cast<float>(p) / 256.0f;
 }
 
-float BME280::readHumidity() {
+float Device::readHumidity() {
     readTemperature(); // must compute t_fine
     std::int32_t adc_H = read16(REG_HUM_MSB);
     std::int32_t var1 = t_fine - 76800;
@@ -230,51 +232,51 @@ float BME280::readHumidity() {
     return static_cast<float>(var5) / 1024.0f;
 }
 
-void BME280::setTemperatureCompensation(const float adjustment) {
+void Device::setTemperatureCompensation(const float adjustment) {
     t_fine_adjust = (static_cast<std::int32_t>(adjustment * 100) << 8) / 5;
 }
 
-float BME280::getTemperatureCompensation() const {
+float Device::getTemperatureCompensation() const {
     return static_cast<float>((t_fine_adjust * 5) >> 8) / 100.0f;
 }
 
-float BME280::readAltitude(const float seaLevelPressure) {
+float Device::readAltitude(const float seaLevelPressure) {
     const float atmospheric = readPressure() / 100.0F;
     return 44330.0 * (1.0 - pow(atmospheric / seaLevelPressure, 0.1903));
 }
 
-float BME280::seaLevelForAltitude(const float altitude, const float atmospheric) {
+float Device::seaLevelForAltitude(const float altitude, const float atmospheric) {
     return atmospheric / pow(1.0 - (altitude / 44330.0), 5.255);
 }
 
-std::uint8_t BME280::read8(std::uint8_t reg) const {
+std::uint8_t Device::read8(std::uint8_t reg) const {
     std::uint8_t val;
     i2c_master_write_read_device(i2c_port, i2c_addr, &reg, 1, &val, 1,
                                  pdMS_TO_TICKS(1000));
     return val;
 }
 
-std::uint16_t BME280::read16(std::uint8_t reg) const {
+std::uint16_t Device::read16(std::uint8_t reg) const {
     std::uint8_t buf[2];
     i2c_master_write_read_device(i2c_port, i2c_addr, &reg, 1, buf, 2,
                                  pdMS_TO_TICKS(1000));
     return (buf[0] << 8) | buf[1];
 }
 
-std::int16_t BME280::readS16(std::uint8_t reg) const {
+std::int16_t Device::readS16(std::uint8_t reg) const {
     return static_cast<std::int16_t>(read16(reg));
 }
 
-std::uint16_t BME280::read16_LE(std::uint8_t reg) const {
+std::uint16_t Device::read16_LE(std::uint8_t reg) const {
     std::uint16_t val = read16(reg);
     return (val >> 8) | (val << 8);
 }
 
-std::int16_t BME280::readS16_LE(std::uint8_t reg) const {
+std::int16_t Device::readS16_LE(std::uint8_t reg) const {
     return static_cast<std::int16_t>(read16_LE(reg));
 }
 
-std::uint32_t BME280::read24(std::uint8_t reg) const {
+std::uint32_t Device::read24(std::uint8_t reg) const {
     std::uint8_t buf[3];
     i2c_master_write_read_device(i2c_port, i2c_addr, &reg, 1, buf, 3,
                                  pdMS_TO_TICKS(1000));
@@ -282,7 +284,9 @@ std::uint32_t BME280::read24(std::uint8_t reg) const {
            (static_cast<std::uint32_t>(buf[1]) << 8) | buf[2];
 }
 
-void BME280::write8(std::uint8_t reg, std::uint8_t value) const {
+void Device::write8(std::uint8_t reg, std::uint8_t value) const {
     std::uint8_t buf[2] = {reg, value};
     i2c_master_write_to_device(i2c_port, i2c_addr, buf, 2, pdMS_TO_TICKS(1000));
 }
+
+} // namespace BME280

@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <ctime>
 
+namespace BME280 {
+
 enum EventType {
     TEMP,
     HUM,
@@ -17,11 +19,11 @@ struct Event {
     EventType type;
 };
 
-class BME280 {
+class Device {
   public:
-    explicit BME280(const i2c_port_t port = I2C_MASTER_NUM,
+    explicit Device(const i2c_port_t port = I2C_MASTER_NUM,
                     const std::uint8_t addr = BME280_ADDR);
-    ~BME280();
+    ~Device();
 
     bool init();
     float readTemperature();
@@ -84,3 +86,5 @@ class BME280 {
     std::uint32_t read24(std::uint8_t reg) const;
     void write8(std::uint8_t reg, std::uint8_t value) const;
 };
+
+} // namespace BME280

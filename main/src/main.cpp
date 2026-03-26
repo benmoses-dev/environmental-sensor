@@ -10,16 +10,16 @@ static const char *TAG = "MAIN";
 
 WIFI wifi;
 MQTT mqtt;
-BME280 bme;
+BME280::Device bme;
 QueueHandle_t eventQueue;
 
 void readTask(void *pvParameters) {
     TickType_t last = xTaskGetTickCount();
     while (true) {
         const auto t = wifi.getTime();
-        const Event tEvent = {bme.readTemperature(), t, EventType::TEMP};
-        const Event hEvent = {bme.readHumidity(), t, EventType::HUM};
-        const Event pEvent = {bme.readPressure(), t, EventType::PRES};
+        const BME280::Event tEvent = {bme.readTemperature(), t, BME280::EventType::TEMP};
+        const BME280::Event hEvent = {bme.readHumidity(), t, BME280::EventType::HUM};
+        const BME280::Event pEvent = {bme.readPressure(), t, BME280::EventType::PRES};
         xQueueSend(eventQueue, &tEvent, portMAX_DELAY);
         xQueueSend(eventQueue, &hEvent, portMAX_DELAY);
         xQueueSend(eventQueue, &pEvent, portMAX_DELAY);
@@ -27,7 +27,7 @@ void readTask(void *pvParameters) {
     }
 }
 
-void toJson(const Event &event, char *buf, const std::size_t size) {
+void toJson(const BME280::Event &event, char *buf, const std::size_t size) {
     const std::int32_t n = snprintf(buf, size, "{\"time\":%lld,\"val\":%.2f}",
                                     static_cast<long long>(event.timestamp), event.val);
     if (n < 0 || n >= size) {
@@ -36,7 +36,7 @@ void toJson(const Event &event, char *buf, const std::size_t size) {
 }
 
 void logTask(void *pvParameters) {
-    Event event;
+    BME280::Event event;
     while (true) {
         if (!wifi.connected || !mqtt.connected) {
             delay_ms(1000);
@@ -46,10 +46,10 @@ void logTask(void *pvParameters) {
             const std::size_t len = 64;
             char buf[len];
             toJson(event, buf, len);
-            if (event.type == EventType::TEMP) {
+            if (event.type == BME280::EventType::TEMP) {
                 ESP_LOGI(TAG, "Temp: %.2f °C", event.val);
                 mqtt.publish("temperature", buf);
-            } else if (event.type == EventType::HUM) {
+            } else if (event.type == BME280::EventType::HUM) {
                 ESP_LOGI(TAG, "Humidity: %.2f %%", event.val);
                 mqtt.publish("humidity", buf);
             } else {
@@ -77,7 +77,7 @@ extern "C" void app_main() {
         ESP_LOGE(TAG, "Could not initialise MQTT, exiting...");
         return;
     }
-    eventQueue = xQueueCreate(100, sizeof(Event));
+    eventQueue = xQueueCreate(100, sizeof(BME280::Event));
     xTaskCreate(readTask, "ReadTask", 4096, NULL, 6, NULL);
     xTaskCreate(logTask, "LogTask", 4096, NULL, 3, NULL);
 }
