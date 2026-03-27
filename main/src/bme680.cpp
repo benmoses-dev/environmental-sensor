@@ -1,8 +1,10 @@
 #include "bme680.hpp"
+#include "bme68x.h"
 #include "driver/i2c.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
+#include "events.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <cmath>
@@ -88,14 +90,18 @@ bool Device::init() {
     return true;
 }
 
-float Device::readAltitude(const float seaLevelPressure) {
-    performReading();
-    const float atmospheric = pressure / 100.0F;
-    return 44330.0 * (1.0 - pow(atmospheric / seaLevelPressure, 0.1903));
-}
-
-float Device::seaLevelForAltitude(const float altitude, const float atmospheric) {
-    return atmospheric / pow(1.0 - (altitude / 44330.0), 5.255);
+void Device::logReadings(QueueHandle_t &q, time_t t) {
+    if (!performReading()) {
+        return;
+    }
+    const Event tEvent = {temperature, t, EventType::TEMP};
+    const Event hEvent = {humidity, t, EventType::HUM};
+    const Event pEvent = {pressure, t, EventType::PRES};
+    const Event gEvent = {gasResistance, t, EventType::GAS};
+    xQueueSend(q, &tEvent, portMAX_DELAY);
+    xQueueSend(q, &hEvent, portMAX_DELAY);
+    xQueueSend(q, &pEvent, portMAX_DELAY);
+    xQueueSend(q, &gEvent, portMAX_DELAY);
 }
 
 bool Device::performReading() { return endReading(); }
@@ -142,6 +148,16 @@ bool Device::endReading() {
         gasResistance = 0.0f;
     }
     return true;
+}
+
+float Device::readAltitude(const float seaLevelPressure) {
+    performReading();
+    const float atmospheric = pressure / 100.0F;
+    return 44330.0 * (1.0 - pow(atmospheric / seaLevelPressure, 0.1903));
+}
+
+float Device::seaLevelForAltitude(const float altitude, const float atmospheric) {
+    return atmospheric / pow(1.0 - (altitude / 44330.0), 5.255);
 }
 
 std::int32_t Device::remainingReadingMillis(void) {

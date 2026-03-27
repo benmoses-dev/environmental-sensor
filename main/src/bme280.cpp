@@ -34,6 +34,7 @@
  */
 #include "bme280.hpp"
 #include "esp_log.h"
+#include "events.hpp"
 #include "utils.hpp"
 #include <cmath>
 #include <cstring>
@@ -82,6 +83,15 @@ bool Device::init() {
     delay_ms(100);
     ESP_LOGI(TAG, "BME280 initialised successfully!");
     return true;
+}
+
+void Device::logReadings(QueueHandle_t &q, time_t t) {
+    const Event tEvent = {readTemperature(), t, EventType::TEMP};
+    const Event hEvent = {readHumidity(), t, EventType::HUM};
+    const Event pEvent = {readPressure(), t, EventType::PRES};
+    xQueueSend(q, &tEvent, portMAX_DELAY);
+    xQueueSend(q, &hEvent, portMAX_DELAY);
+    xQueueSend(q, &pEvent, portMAX_DELAY);
 }
 
 bool Device::isReadingCalibration() const {

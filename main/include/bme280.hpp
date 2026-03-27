@@ -2,37 +2,21 @@
 
 #include "config.h"
 #include "driver/i2c.h"
+#include "freertos/queue.h"
+#include "sensor.hpp"
 #include <cstdint>
 #include <ctime>
 
 namespace BME280 {
 
-enum EventType {
-    TEMP,
-    HUM,
-    PRES,
-};
-
-struct Event {
-    float val;
-    time_t timestamp;
-    EventType type;
-};
-
-class Device {
+class Device : public ISensor {
   public:
     explicit Device(const i2c_port_t port = I2C_MASTER_NUM,
                     const std::uint8_t addr = BME280_ADDR);
     ~Device();
 
-    bool init();
-    float readTemperature();
-    float readPressure();
-    float readHumidity();
-    float readAltitude(const float seaLevel);
-    float seaLevelForAltitude(const float altitude, const float atmospheric);
-    void setTemperatureCompensation(const float adjustment);
-    float getTemperatureCompensation() const;
+    bool init() override;
+    void logReadings(QueueHandle_t &q, time_t t) override;
 
   private:
     const i2c_port_t i2c_port;
@@ -78,6 +62,13 @@ class Device {
     bool isReadingCalibration() const;
     void readCalibration();
     void setSampling() const;
+    float readTemperature();
+    float readPressure();
+    float readHumidity();
+    float readAltitude(const float seaLevel);
+    float seaLevelForAltitude(const float altitude, const float atmospheric);
+    void setTemperatureCompensation(const float adjustment);
+    float getTemperatureCompensation() const;
     std::uint8_t read8(std::uint8_t reg) const;
     std::uint16_t read16(std::uint8_t reg) const;
     std::int16_t readS16(std::uint8_t reg) const;
