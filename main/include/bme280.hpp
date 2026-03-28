@@ -6,7 +6,6 @@
 #include "freertos/queue.h"
 #include "sensor.hpp"
 #include <cstdint>
-#include <ctime>
 
 namespace BME280 {
 
@@ -17,7 +16,7 @@ class Device : public ISensor {
     ~Device();
 
     bool init() override;
-    void logReadings(QueueHandle_t q, const time_t t) override;
+    void logReadings(QueueHandle_t q) override;
 
   private:
     const i2c_port_t i2c_port;

@@ -7,6 +7,7 @@
 #include "freertos/task.h"
 #include "utils.hpp"
 #include <cmath>
+#include <ctime>
 
 namespace BME680 {
 
@@ -78,14 +79,15 @@ bool Device::init() {
     return true;
 }
 
-void Device::logReadings(QueueHandle_t q, const time_t t) {
+void Device::logReadings(QueueHandle_t q) {
     if (!performReading()) {
         return;
     }
-    const Event tEvent = {temperature + TEMP_ADJUST, t, EventType::TEMP};
-    const Event hEvent = {humidity + HUM_ADJUST, t, EventType::HUM};
-    const Event pEvent = {pressure + PRES_ADJUST, t, EventType::PRES};
-    const Event gEvent = {gasResistance + GAS_ADJUST, t, EventType::GAS};
+    const time_t tval = time(NULL);
+    const Event tEvent = {temperature + TEMP_ADJUST, tval, EventType::TEMP};
+    const Event hEvent = {humidity + HUM_ADJUST, tval, EventType::HUM};
+    const Event pEvent = {pressure + PRES_ADJUST, tval, EventType::PRES};
+    const Event gEvent = {gasResistance + GAS_ADJUST, tval, EventType::GAS};
     xQueueSend(q, &tEvent, portMAX_DELAY);
     xQueueSend(q, &hEvent, portMAX_DELAY);
     xQueueSend(q, &pEvent, portMAX_DELAY);

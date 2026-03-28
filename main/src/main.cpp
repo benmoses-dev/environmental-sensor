@@ -45,8 +45,7 @@ void readTask(void *pvParameters) {
     TickType_t last = xTaskGetTickCount();
     while (true) {
         for (ISensor *s : sensors) {
-            const auto t = wifi.getTime();
-            s->logReadings(eventQueue, t);
+            s->logReadings(eventQueue);
         }
         vTaskDelayUntil(&last, pdMS_TO_TICKS(1000));
     }
@@ -71,18 +70,40 @@ void logTask(void *pvParameters) {
             const std::size_t len = 64;
             char buf[len];
             toJson(event, buf, len);
-            if (event.type == EventType::TEMP) {
+            switch (event.type) {
+            case EventType::TEMP:
                 ESP_LOGI(TAG, "Temp: %.2f °C", event.val);
                 mqtt.publish("temperature", buf);
-            } else if (event.type == EventType::HUM) {
+                break;
+
+            case EventType::HUM:
                 ESP_LOGI(TAG, "Humidity: %.2f %%", event.val);
                 mqtt.publish("humidity", buf);
-            } else if (event.type == EventType::PRES) {
+                break;
+
+            case EventType::PRES:
                 ESP_LOGI(TAG, "Pressure: %.2f hPa", event.val / 100.0f);
                 mqtt.publish("pressure", buf);
-            } else {
+                break;
+
+            case EventType::GAS:
                 ESP_LOGI(TAG, "Gas: %.2f kΩ", event.val / 1000.0f);
                 mqtt.publish("gas", buf);
+                break;
+
+            case EventType::PM2_5:
+                ESP_LOGI(TAG, "PM2.5: %.2f ug/m3", event.val);
+                mqtt.publish("pm2_5", buf);
+                break;
+
+            case EventType::PM10:
+                ESP_LOGI(TAG, "PM10 : %.2f ug/m3", event.val);
+                mqtt.publish("pm10", buf);
+                break;
+
+            default:
+                ESP_LOGE(TAG, "Unknown event type");
+                break;
             }
         }
     }

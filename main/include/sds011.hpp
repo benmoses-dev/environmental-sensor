@@ -6,6 +6,7 @@
 #include "freertos/queue.h"
 #include "sensor.hpp"
 #include <cstring>
+#include <ctime>
 
 namespace SDS011 {
 
@@ -13,6 +14,7 @@ struct Reading {
     float pm2_5 = 0.0f;
     float pm10 = 0.0f;
     bool valid = false;
+    time_t t = 0;
 };
 
 class Device : public ISensor {
@@ -21,7 +23,7 @@ class Device : public ISensor {
     ~Device();
 
     bool init() override;
-    void logReadings(QueueHandle_t q, const time_t t) override;
+    void logReadings(QueueHandle_t q) override;
     void start();
 
   private:

@@ -38,6 +38,7 @@
 #include "utils.hpp"
 #include <cmath>
 #include <cstring>
+#include <ctime>
 
 namespace BME280 {
 
@@ -68,10 +69,10 @@ bool Device::init() {
     return true;
 }
 
-void Device::logReadings(QueueHandle_t q, const time_t t) {
-    const Event tEvent = {readTemperature() + TEMP_ADJUST, t, EventType::TEMP};
-    const Event hEvent = {readHumidity() + HUM_ADJUST, t, EventType::HUM};
-    const Event pEvent = {readPressure() + PRES_ADJUST, t, EventType::PRES};
+void Device::logReadings(QueueHandle_t q) {
+    const Event tEvent = {readTemperature() + TEMP_ADJUST, time(NULL), EventType::TEMP};
+    const Event hEvent = {readHumidity() + HUM_ADJUST, time(NULL), EventType::HUM};
+    const Event pEvent = {readPressure() + PRES_ADJUST, time(NULL), EventType::PRES};
     xQueueSend(q, &tEvent, portMAX_DELAY);
     xQueueSend(q, &hEvent, portMAX_DELAY);
     xQueueSend(q, &pEvent, portMAX_DELAY);

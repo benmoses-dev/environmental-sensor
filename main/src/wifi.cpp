@@ -6,6 +6,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include <cstring>
+#include <ctime>
 
 static const char *TAG = "NETWORK";
 
@@ -211,5 +212,3 @@ bool WIFI::initTime() const {
         return false;
     }
 }
-
-time_t WIFI::getTime() const { return time(NULL); }
