@@ -1,5 +1,7 @@
 /**/.cache/
 /**/build/
 /sdkconfig
+/sdkconfig.old
 /**/compile_commands.json
 /**/config.h
+/**/config.hpp

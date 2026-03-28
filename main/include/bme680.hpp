@@ -1,8 +1,9 @@
 #pragma once
 
 #include "bme68x_defs.h"
-#include "config.h"
+#include "config.hpp"
 #include "driver/i2c.h"
+#include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "sensor.hpp"
 #include <cstdint>
@@ -17,7 +18,7 @@ class Device : public ISensor {
     ~Device();
 
     bool init() override;
-    void logReadings(QueueHandle_t &q, time_t t) override;
+    void logReadings(QueueHandle_t q, const time_t t) override;
 
   private:
     const i2c_port_t i2c_port;

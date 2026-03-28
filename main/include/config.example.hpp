@@ -1,5 +1,6 @@
 #pragma once
 
+#include "driver/uart.h"
 #include <cstdint>
 
 #define CONFIG_MQTT_ENDPOINT "broker.example"
@@ -18,9 +19,16 @@
 
 #define READ_BME280 1
 #define READ_BME680 0
+#define READ_SDS011 1
+
 inline constexpr std::uint8_t BME280_ADDR = 0x76;
 inline constexpr std::uint8_t BME680_ADDR = 0x77;
 inline constexpr std::uint8_t BME680_CHIP_ID = 0x61;
+
+static constexpr uart_port_t UART_PORT = UART_NUM_2;
+static constexpr std::uint8_t TX_PIN = 19;
+static constexpr std::uint8_t RX_PIN = 18;
+static constexpr std::uint32_t UART_BUF_SIZE = 256;
 
 inline constexpr float TEMP_ADJUST = 0.0;
 inline constexpr float HUM_ADJUST = 0.0;

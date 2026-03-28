@@ -1,11 +1,12 @@
 #include "bme280.hpp"
 #include "bme680.hpp"
-#include "config.h"
+#include "config.hpp"
 #include "esp_log.h"
 #include "events.hpp"
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "mqtt.hpp"
+#include "sds011.hpp"
 #include "sensor.hpp"
 #include "utils.hpp"
 #include "wifi.hpp"
@@ -24,12 +25,19 @@ BME280::Device bme280;
 BME680::Device bme680;
 #endif
 
+#if READ_SDS011
+SDS011::Device sds;
+#endif
+
 ISensor *sensors[] = {
 #if READ_BME280
     &bme280,
 #endif
 #if READ_BME680
     &bme680,
+#endif
+#if READ_SDS011
+    &sds,
 #endif
 };
 

@@ -1,5 +1,5 @@
 #include "mqtt.hpp"
-#include "config.h"
+#include "config.hpp"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "freertos/event_groups.h"

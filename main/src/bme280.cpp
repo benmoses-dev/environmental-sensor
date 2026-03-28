@@ -68,7 +68,7 @@ bool Device::init() {
     return true;
 }
 
-void Device::logReadings(QueueHandle_t &q, time_t t) {
+void Device::logReadings(QueueHandle_t q, const time_t t) {
     const Event tEvent = {readTemperature() + TEMP_ADJUST, t, EventType::TEMP};
     const Event hEvent = {readHumidity() + HUM_ADJUST, t, EventType::HUM};
     const Event pEvent = {readPressure() + PRES_ADJUST, t, EventType::PRES};

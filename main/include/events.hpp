@@ -7,6 +7,8 @@ enum EventType {
     HUM,
     PRES,
     GAS,
+    PM2_5,
+    PM10,
 };
 
 struct Event {

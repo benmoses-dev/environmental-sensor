@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "src/main.cpp" "src/bme280.cpp" "src/bme680.cpp" "src/bme68x.c" "src/wifi.cpp" "src/mqtt.cpp"
+    SRCS "src/main.cpp" "src/wifi.cpp" "src/mqtt.cpp" "src/bme280.cpp" "src/bme680.cpp" "src/bme68x.c" "src/sds011.cpp"
     INCLUDE_DIRS "include"
-    REQUIRES driver esp_wifi nvs_flash mqtt mbedtls
+    REQUIRES driver esp_wifi nvs_flash mqtt mbedtls esp_driver_uart
 )

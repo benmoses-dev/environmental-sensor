@@ -1,5 +1,5 @@
 #include "wifi.hpp"
-#include "config.h"
+#include "config.hpp"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_sntp.h"
