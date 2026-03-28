@@ -9,6 +9,7 @@ enum EventType {
     GAS,
     PM2_5,
     PM10,
+    CO2,
 };
 
 struct Event {

@@ -6,6 +6,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "mqtt.hpp"
+#include "scd41.hpp"
 #include "sds011.hpp"
 #include "sensor.hpp"
 #include "utils.hpp"
@@ -29,6 +30,10 @@ BME680::Device bme680;
 SDS011::Device sds;
 #endif
 
+#if READ_SCD41
+SCD41::Device scd;
+#endif
+
 ISensor *sensors[] = {
 #if READ_BME280
     &bme280,
@@ -38,6 +43,9 @@ ISensor *sensors[] = {
 #endif
 #if READ_SDS011
     &sds,
+#endif
+#if READ_SCD41
+    &scd,
 #endif
 };
 
@@ -99,6 +107,11 @@ void logTask(void *pvParameters) {
             case EventType::PM10:
                 ESP_LOGI(TAG, "PM10 : %.2f ug/m3", event.val);
                 mqtt.publish("pm10", buf);
+                break;
+
+            case EventType::CO2:
+                ESP_LOGI(TAG, "CO2 : %.2f ppm", event.val);
+                mqtt.publish("co2", buf);
                 break;
 
             default:
