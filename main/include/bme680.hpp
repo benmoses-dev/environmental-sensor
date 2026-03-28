@@ -20,8 +20,8 @@ class Device : public ISensor {
     void logReadings(QueueHandle_t &q, time_t t) override;
 
   private:
-    const i2c_port_t port;
-    const std::uint8_t addr;
+    const i2c_port_t i2c_port;
+    const std::uint8_t i2c_addr;
     bool i2cInitialised = false;
     std::int32_t _sensorID;
     std::uint32_t measStart = 0;

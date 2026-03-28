@@ -49,25 +49,8 @@ Device::Device(const i2c_port_t port, const std::uint8_t addr)
 Device::~Device() {}
 
 bool Device::init() {
-    if (!i2cInitialised) {
-        i2c_config_t conf{};
-        conf.mode = I2C_MODE_MASTER;
-        conf.sda_io_num = I2C_MASTER_SDA_IO;
-        conf.scl_io_num = I2C_MASTER_SCL_IO;
-        conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-        conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-        conf.master.clk_speed = I2C_MASTER_FREQ_HZ;
-        esp_err_t res = i2c_param_config(I2C_MASTER_NUM, &conf);
-        if (res != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to configure i2c params!");
-            return false;
-        }
-        res = i2c_driver_install(I2C_MASTER_NUM, conf.mode, 0, 0, 0);
-        if (res != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to install I2C driver");
-            return false;
-        }
-        i2cInitialised = true;
+    if (!i2cInitialised && !initialiseI2C(i2c_port, i2c_addr)) {
+        return false;
     }
     if (read8(REG_ID) != 0x60) {
         ESP_LOGE(TAG, "Wrong BME280 ID!");

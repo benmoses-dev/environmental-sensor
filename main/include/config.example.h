@@ -16,7 +16,8 @@
 #define I2C_MASTER_SDA_IO 22
 #define I2C_MASTER_SCL_IO 23
 
-inline constexpr std::uint8_t READ_BME280 = true;
-inline constexpr std::uint8_t READ_BME680 = false;
+#define READ_BME280 1
+#define READ_BME680 0
 inline constexpr std::uint8_t BME280_ADDR = 0x76;
 inline constexpr std::uint8_t BME680_ADDR = 0x77;
+inline constexpr std::uint8_t BME680_CHIP_ID = 0x61;

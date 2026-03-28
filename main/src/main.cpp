@@ -1,5 +1,6 @@
 #include "bme280.hpp"
 #include "bme680.hpp"
+#include "config.h"
 #include "esp_log.h"
 #include "events.hpp"
 #include "freertos/queue.h"
@@ -72,7 +73,7 @@ void logTask(void *pvParameters) {
                 ESP_LOGI(TAG, "Pressure: %.2f hPa", event.val / 100.0f);
                 mqtt.publish("pressure", buf);
             } else {
-                ESP_LOGI(TAG, "Gas: %.2f", event.val);
+                ESP_LOGI(TAG, "Gas: %.2f kΩ", event.val / 1000.0f);
                 mqtt.publish("gas", buf);
             }
         }
@@ -80,12 +81,15 @@ void logTask(void *pvParameters) {
 }
 
 extern "C" void app_main() {
+    std::uint32_t count = 0;
     for (ISensor *s : sensors) {
+        count++;
         if (!s->init()) {
             ESP_LOGE(TAG, "Sensor failed to initialise!");
             return;
         }
     }
+    ESP_LOGI(TAG, "Initialised %d Sensors...", count);
     if (!wifi.init()) {
         ESP_LOGE(TAG, "WiFi initialisation failed, exiting...");
         return;
