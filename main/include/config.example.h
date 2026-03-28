@@ -21,3 +21,8 @@
 inline constexpr std::uint8_t BME280_ADDR = 0x76;
 inline constexpr std::uint8_t BME680_ADDR = 0x77;
 inline constexpr std::uint8_t BME680_CHIP_ID = 0x61;
+
+inline constexpr float TEMP_ADJUST = 0.0;
+inline constexpr float HUM_ADJUST = 0.0;
+inline constexpr float PRES_ADJUST = 0.0;
+inline constexpr float GAS_ADJUST = 0.0;

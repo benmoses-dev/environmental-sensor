@@ -69,9 +69,9 @@ bool Device::init() {
 }
 
 void Device::logReadings(QueueHandle_t &q, time_t t) {
-    const Event tEvent = {readTemperature(), t, EventType::TEMP};
-    const Event hEvent = {readHumidity(), t, EventType::HUM};
-    const Event pEvent = {readPressure(), t, EventType::PRES};
+    const Event tEvent = {readTemperature() + TEMP_ADJUST, t, EventType::TEMP};
+    const Event hEvent = {readHumidity() + HUM_ADJUST, t, EventType::HUM};
+    const Event pEvent = {readPressure() + PRES_ADJUST, t, EventType::PRES};
     xQueueSend(q, &tEvent, portMAX_DELAY);
     xQueueSend(q, &hEvent, portMAX_DELAY);
     xQueueSend(q, &pEvent, portMAX_DELAY);
