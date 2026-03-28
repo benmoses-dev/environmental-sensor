@@ -42,7 +42,7 @@ inline bool scanI2C(const i2c_port_t port, const std::uint8_t addr) {
         return false;
     }
     ESP_LOGI("I2C_SCAN", "Scanning I2C bus...");
-    volatile bool found = false;
+    bool found = false;
     for (std::uint8_t a = 1; a < 0x78; a++) {
         i2c_cmd_handle_t cmd = i2c_cmd_link_create();
         i2c_master_start(cmd);
