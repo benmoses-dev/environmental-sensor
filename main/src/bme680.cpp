@@ -45,7 +45,7 @@ bool Device::init() {
     /**
      * LPF for sensor readings. 3 is a nice middle ground.
      */
-    if (!setIIRFilterSize(BME68X_FILTER_SIZE_3)) {
+    if (!setIIRFilterSize(BME68X_FILTER_OFF)) {
         ESP_LOGE(TAG, "Failed to set IIR filter!");
         return false;
     }
@@ -53,15 +53,15 @@ bool Device::init() {
         ESP_LOGE(TAG, "Failed to set ODR!");
         return false;
     }
-    if (!setHumidityOversampling(BME68X_OS_2X)) {
+    if (!setHumidityOversampling(BME68X_OS_16X)) {
         ESP_LOGE(TAG, "Failed to set humidity oversampling!");
         return false;
     }
-    if (!setPressureOversampling(BME68X_OS_4X)) {
+    if (!setPressureOversampling(BME68X_OS_16X)) {
         ESP_LOGE(TAG, "Failed to set pressure oversampling!");
         return false;
     }
-    if (!setTemperatureOversampling(BME68X_OS_8X)) {
+    if (!setTemperatureOversampling(BME68X_OS_16X)) {
         ESP_LOGE(TAG, "Failed to set temperature oversampling!");
         return false;
     }
