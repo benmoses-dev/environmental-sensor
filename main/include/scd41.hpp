@@ -21,7 +21,13 @@ class Device : public ISensor {
     const std::uint8_t i2c_addr;
 
     bool write16(std::uint16_t value);
+    bool write16WithArg(const std::uint16_t cmd, const std::uint16_t arg);
     std::uint8_t getCRC8(const std::uint8_t *data);
+    bool readBytes(std::uint8_t *buffer, std::size_t len);
+    bool readMeasurement(std::uint8_t *buffer);
+    bool isDataReady();
+    bool startPeriodicMeasurement();
+    bool stopPeriodicMeasurement();
 };
 
 } // namespace SCD41
