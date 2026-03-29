@@ -81,10 +81,12 @@ bool Device::isDataReady() {
 }
 
 void Device::logReadings(QueueHandle_t q) {
-    if (!isDataReady()) {
-        ESP_LOGD(TAG, "SCD41 data not ready yet");
+    const bool ready = isDataReady();
+    if (!ready) {
+        ESP_LOGI(TAG, "Data not ready yet");
         return;
     }
+    ESP_LOGI(TAG, "Reading data");
     std::uint8_t raw[9];
     if (!readMeasurement(raw)) {
         ESP_LOGE(TAG, "Failed to read SCD41");
