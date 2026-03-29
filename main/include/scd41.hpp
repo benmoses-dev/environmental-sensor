@@ -19,7 +19,6 @@ class Device : public ISensor {
   private:
     const i2c_port_t i2c_port;
     const std::uint8_t i2c_addr;
-    bool i2cInitialised = false;
 
     bool write16(std::uint16_t value);
     std::uint8_t getCRC8(const std::uint8_t *data);

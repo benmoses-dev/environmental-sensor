@@ -20,10 +20,6 @@ Device::~Device() {}
 
 bool Device::init() {
     ESP_LOGI(TAG, "Initialising BME680...");
-    if (!i2cInitialised && !initialiseI2C(i2c_port, i2c_addr)) {
-        ESP_LOGE(TAG, "Failed to initialise I2C!");
-        return false;
-    }
     ESP_LOGI(TAG, "Starting gas sensor...");
     gas_sensor.chip_id = BME680_CHIP_ID;
     gas_sensor.intf = BME68X_I2C_INTF;

@@ -123,6 +123,10 @@ void logTask(void *pvParameters) {
 }
 
 extern "C" void app_main() {
+    if (INITIALISE_I2C && !initialiseI2C(I2C_MASTER_NUM)) {
+        ESP_LOGE(TAG, "Failed to initialise i2c!");
+        return;
+    }
     std::uint32_t count = 0;
     for (ISensor *s : sensors) {
         count++;

@@ -23,7 +23,6 @@ class Device : public ISensor {
   private:
     const i2c_port_t i2c_port;
     const std::uint8_t i2c_addr;
-    bool i2cInitialised = false;
     std::int32_t _sensorID;
     std::uint32_t measStart = 0;
     std::uint16_t measDur = 0;

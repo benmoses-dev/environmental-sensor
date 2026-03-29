@@ -16,7 +16,7 @@ inline std::uint32_t millis() {
     return static_cast<std::uint32_t>(esp_timer_get_time() / 1000LL);
 }
 
-inline bool initialiseI2C(const i2c_port_t port, const std::uint8_t addr) {
+inline bool initialiseI2C(const i2c_port_t port) {
     i2c_config_t conf{};
     conf.mode = I2C_MODE_MASTER;
     conf.sda_io_num = I2C_MASTER_SDA_IO;
@@ -37,12 +37,12 @@ inline bool initialiseI2C(const i2c_port_t port, const std::uint8_t addr) {
     return true;
 }
 
-inline bool scanI2C(const i2c_port_t port, const std::uint8_t addr) {
-    if (!initialiseI2C(port, addr)) {
+inline bool scanI2C(const i2c_port_t port) {
+    if (!initialiseI2C(port)) {
         return false;
     }
+    std::uint8_t addr = 0x00;
     ESP_LOGI("I2C_SCAN", "Scanning I2C bus...");
-    bool found = false;
     for (std::uint8_t a = 1; a < 0x78; a++) {
         i2c_cmd_handle_t cmd = i2c_cmd_link_create();
         i2c_master_start(cmd);
@@ -52,10 +52,10 @@ inline bool scanI2C(const i2c_port_t port, const std::uint8_t addr) {
         i2c_cmd_link_delete(cmd);
         if (res == ESP_OK) {
             ESP_LOGI("I2C_SCAN", "Found device at 0x%02X", a);
-            found = true;
+            addr = a;
         }
     }
-    if (!found) {
+    if (addr == 0x00) {
         ESP_LOGE("I2C_SCAN", "No device found!");
         return false;
     }

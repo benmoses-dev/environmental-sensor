@@ -21,7 +21,6 @@ class Device : public ISensor {
   private:
     const i2c_port_t i2c_port;
     const std::uint8_t i2c_addr;
-    bool i2cInitialised = false;
 
     struct Calibration {
         std::int32_t dig_T1;

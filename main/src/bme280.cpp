@@ -50,9 +50,6 @@ Device::Device(const i2c_port_t port, const std::uint8_t addr)
 Device::~Device() {}
 
 bool Device::init() {
-    if (!i2cInitialised && !initialiseI2C(i2c_port, i2c_addr)) {
-        return false;
-    }
     if (read8(REG_ID) != 0x60) {
         ESP_LOGE(TAG, "Wrong BME280 ID!");
         return false;
