@@ -25,11 +25,15 @@ class Device : public ISensor {
     bool init() override;
     void logReadings(QueueHandle_t q) override;
     void start();
+    bool sleep() override;
+    bool isInitialised() override;
 
   private:
     const uart_port_t port;
     Reading reading;
     portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
+    bool initialised;
+    portMUX_TYPE initMux = portMUX_INITIALIZER_UNLOCKED;
 
     static void parseFrame(const std::uint8_t frame[10], Reading &r);
 };

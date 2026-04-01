@@ -15,10 +15,14 @@ class Device : public ISensor {
 
     bool init() override;
     void logReadings(QueueHandle_t q) override;
+    bool sleep() override;
+    bool isInitialised() override;
 
   private:
     const i2c_port_t i2c_port;
     const std::uint8_t i2c_addr;
+    bool initialised;
+    portMUX_TYPE initMux = portMUX_INITIALIZER_UNLOCKED;
 
     bool write16(std::uint16_t value);
     bool write16WithArg(const std::uint16_t cmd, const std::uint16_t arg);

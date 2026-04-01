@@ -18,7 +18,6 @@
 #define READ_SDS011 1
 #define READ_SCD41 0
 
-inline constexpr bool INITIALISE_I2C = true;
 inline constexpr i2c_port_t I2C_MASTER_NUM = I2C_NUM_0;
 inline constexpr std::uint32_t I2C_MASTER_FREQ_HZ = 100'000;
 inline constexpr std::int32_t I2C_MASTER_SDA_IO = 22;
@@ -38,3 +37,12 @@ inline constexpr float TEMP_ADJUST = 0.0;
 inline constexpr float HUM_ADJUST = 0.0;
 inline constexpr float PRES_ADJUST = 0.0;
 inline constexpr float GAS_ADJUST = 0.0;
+
+/**
+ * Operating mode:
+ * 0 = continuous
+ * 1 or greater = periodic
+ */
+inline constexpr std::uint8_t OPERATING_MODE = 1;
+inline constexpr std::uint32_t MEASUREMENT_PERIOD_S = 60; // Increase to save power
+inline constexpr std::uint32_t WARMUP_TIME_S = 30;

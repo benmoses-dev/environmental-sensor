@@ -14,7 +14,7 @@ namespace BME680 {
 static const char *TAG = "BME680";
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
-    : i2c_port(port), i2c_addr(addr), measStart(0), measDur(0) {}
+    : i2c_port(port), i2c_addr(addr), measStart(0), measDur(0), initialised(false) {}
 
 Device::~Device() {}
 
@@ -72,7 +72,18 @@ bool Device::init() {
         return false;
     }
     ESP_LOGI(TAG, "BME680 configured successfully!");
+    taskENTER_CRITICAL(&initMux);
+    initialised = true;
+    taskEXIT_CRITICAL(&initMux);
     return true;
+}
+
+bool Device::isInitialised() {
+    bool res;
+    taskENTER_CRITICAL(&initMux);
+    res = initialised;
+    taskEXIT_CRITICAL(&initMux);
+    return res;
 }
 
 void Device::logReadings(QueueHandle_t q) {
@@ -88,6 +99,13 @@ void Device::logReadings(QueueHandle_t q) {
     xQueueSend(q, &hEvent, portMAX_DELAY);
     xQueueSend(q, &pEvent, portMAX_DELAY);
     xQueueSend(q, &gEvent, portMAX_DELAY);
+}
+
+bool Device::sleep() {
+    taskENTER_CRITICAL(&initMux);
+    initialised = false;
+    taskEXIT_CRITICAL(&initMux);
+    return true;
 }
 
 std::uint32_t Device::beginReading() {

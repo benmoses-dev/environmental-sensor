@@ -12,7 +12,7 @@ static constexpr std::uint16_t CMD_READ_MEASUREMENT = 0xEC05;
 static constexpr std::uint16_t CMD_GET_DATA_READY_STATUS = 0xE4B8;
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
-    : i2c_port(port), i2c_addr(addr) {}
+    : i2c_port(port), i2c_addr(addr), initialised(false) {}
 
 Device::~Device() {}
 
@@ -27,7 +27,18 @@ bool Device::init() {
         return false;
     }
     ESP_LOGI(TAG, "SCD41 initialised successfully!");
+    taskENTER_CRITICAL(&initMux);
+    initialised = true;
+    taskEXIT_CRITICAL(&initMux);
     return true;
+}
+
+bool Device::isInitialised() {
+    bool res;
+    taskENTER_CRITICAL(&initMux);
+    res = initialised;
+    taskEXIT_CRITICAL(&initMux);
+    return res;
 }
 
 bool Device::startPeriodicMeasurement() {
@@ -35,6 +46,17 @@ bool Device::startPeriodicMeasurement() {
 }
 
 bool Device::stopPeriodicMeasurement() { return write16(CMD_STOP_PERIODIC_MEASUREMENT); }
+
+bool Device::sleep() {
+    const bool stopped = stopPeriodicMeasurement();
+    if (!stopped) {
+        ESP_LOGE(TAG, "Could not stop device");
+    }
+    taskENTER_CRITICAL(&initMux);
+    initialised = false;
+    taskEXIT_CRITICAL(&initMux);
+    return stopped;
+}
 
 bool Device::readBytes(std::uint8_t *buffer, std::size_t len) {
     const esp_err_t res =

@@ -19,6 +19,8 @@ class Device : public ISensor {
 
     bool init() override;
     void logReadings(QueueHandle_t q) override;
+    bool sleep() override;
+    bool isInitialised() override;
 
   private:
     const i2c_port_t i2c_port;
@@ -26,6 +28,8 @@ class Device : public ISensor {
     std::int32_t _sensorID;
     std::uint32_t measStart = 0;
     std::uint16_t measDur = 0;
+    bool initialised;
+    portMUX_TYPE initMux = portMUX_INITIALIZER_UNLOCKED;
 
     float temperature;
     float pressure;

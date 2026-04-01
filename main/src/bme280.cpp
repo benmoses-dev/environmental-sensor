@@ -45,7 +45,7 @@ namespace BME280 {
 static const char *TAG = "BME280";
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
-    : i2c_port(port), i2c_addr(addr) {}
+    : i2c_port(port), i2c_addr(addr), initialised(false) {}
 
 Device::~Device() {}
 
@@ -63,6 +63,9 @@ bool Device::init() {
     setSampling();
     delay_ms(100);
     ESP_LOGI(TAG, "BME280 initialised successfully!");
+    taskENTER_CRITICAL(&initMux);
+    initialised = true;
+    taskEXIT_CRITICAL(&initMux);
     return true;
 }
 
@@ -75,9 +78,24 @@ void Device::logReadings(QueueHandle_t q) {
     xQueueSend(q, &pEvent, portMAX_DELAY);
 }
 
+bool Device::sleep() {
+    taskENTER_CRITICAL(&initMux);
+    initialised = false;
+    taskEXIT_CRITICAL(&initMux);
+    return true;
+}
+
 bool Device::isReadingCalibration() const {
     const std::uint8_t rStatus = read8(REG_STATUS);
     return (rStatus & (1 << 0)) != 0;
+}
+
+bool Device::isInitialised() {
+    bool res;
+    taskENTER_CRITICAL(&initMux);
+    res = initialised;
+    taskEXIT_CRITICAL(&initMux);
+    return res;
 }
 
 void Device::readCalibration() {

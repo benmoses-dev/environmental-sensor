@@ -10,7 +10,7 @@ namespace SDS011 {
 
 static const char *TAG = "SDS011";
 
-Device::Device(const uart_port_t p) : port(p) {};
+Device::Device(const uart_port_t p) : port(p), initialised(false) {};
 
 Device::~Device() {};
 
@@ -44,6 +44,24 @@ bool Device::init() {
     }
     ESP_LOGI(TAG, "SDS011 UART initialised");
     xTaskCreate(sdsTask, "SDSTask", 4096, this, 5, NULL);
+    taskENTER_CRITICAL(&initMux);
+    initialised = true;
+    taskEXIT_CRITICAL(&initMux);
+    return true;
+}
+
+bool Device::isInitialised() {
+    bool res;
+    taskENTER_CRITICAL(&initMux);
+    res = initialised;
+    taskEXIT_CRITICAL(&initMux);
+    return res;
+}
+
+bool Device::sleep() {
+    taskENTER_CRITICAL(&initMux);
+    initialised = false;
+    taskEXIT_CRITICAL(&initMux);
     return true;
 }
 
