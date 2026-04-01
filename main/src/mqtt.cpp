@@ -23,6 +23,7 @@ MQTT::~MQTT() {};
 void MQTT::handler(void *args, esp_event_base_t base, std::int32_t id, void *data) {
     MQTT *self = static_cast<MQTT *>(args);
     esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t)data;
+    std::uint32_t pending;
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT connected");
@@ -30,11 +31,25 @@ void MQTT::handler(void *args, esp_event_base_t base, std::int32_t id, void *dat
         xEventGroupSetBits(self->meg, MQTT::CONNECTED_BIT);
         self->publish("status", "online");
         break;
+
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGW(TAG, "MQTT disconnected");
         self->connected = false;
         xEventGroupClearBits(self->meg, MQTT::CONNECTED_BIT);
         break;
+
+    case MQTT_EVENT_PUBLISHED:
+        if (self->pendingPublishes.load() > 0) {
+            self->pendingPublishes.fetch_sub(1);
+        }
+        pending = self->pendingPublishes.load();
+        ESP_LOGI(TAG, "MQTT publish ACK received, pending=%lu",
+                 static_cast<unsigned long>(pending));
+        if (pending == 0) {
+            xEventGroupSetBits(self->meg, MQTT::ALL_PUBLISHED_BIT);
+        }
+        break;
+
     default:
         break;
     }
@@ -48,12 +63,30 @@ bool MQTT::publish(const char *topic, const char *message) {
     const std::size_t len = 64;
     char buf[len];
     getTopic(topic, buf, len);
-    const std::int32_t res = esp_mqtt_client_publish(client, buf, message, 0, 2, 0);
+    pendingPublishes.fetch_add(1);
+    xEventGroupClearBits(meg, MQTT::ALL_PUBLISHED_BIT);
+    const std::int32_t res = esp_mqtt_client_publish(client, buf, message, 0, 1, 0);
     if (res < 0) {
         ESP_LOGW(TAG, "Error publishing message!");
+        pendingPublishes.fetch_sub(1);
+        if (pendingPublishes.load() == 0) {
+            xEventGroupSetBits(meg, MQTT::ALL_PUBLISHED_BIT);
+        }
         return false;
     }
+    const std::uint32_t pending = pendingPublishes.load();
+    ESP_LOGI(TAG, "Queued publish to %s, pending=%lu", buf,
+             static_cast<unsigned long>(pending));
     return true;
+}
+
+bool MQTT::waitForPublishes(TickType_t timeoutTicks) {
+    if (pendingPublishes.load() == 0) {
+        return true;
+    }
+    EventBits_t bits =
+        xEventGroupWaitBits(meg, MQTT::ALL_PUBLISHED_BIT, pdFALSE, pdTRUE, timeoutTicks);
+    return (bits & MQTT::ALL_PUBLISHED_BIT) != 0;
 }
 
 bool MQTT::init() {

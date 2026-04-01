@@ -182,10 +182,11 @@ extern "C" void app_main() {
     }
     std::uint32_t count = 0;
     for (ISensor *s : sensors) {
-        count++;
         if (!s->init()) {
             ESP_LOGE(TAG, "Sensor failed to initialise!");
+            continue;
         }
+        count++;
     }
     if (count == 0) {
         ESP_LOGE(TAG, "No Sensors initialised!");
@@ -204,5 +205,11 @@ extern "C" void app_main() {
     takeReadings();
     shutdownSensors();
     publishReadings(0);
+    const TickType_t timeoutTicks = pdMS_TO_TICKS(5000);
+    if (!mqtt.waitForPublishes(timeoutTicks)) {
+        ESP_LOGW(TAG, "Not all MQTT messages confirmed within timeout!");
+    } else {
+        ESP_LOGI(TAG, "All MQTT messages confirmed");
+    }
     goToSleep();
 }
