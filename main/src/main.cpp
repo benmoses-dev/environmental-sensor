@@ -16,6 +16,8 @@
 
 static const char *TAG = "MAIN";
 
+#define DEBUG 1
+
 WIFI wifi;
 MQTT mqtt;
 QueueHandle_t eventQueue;
@@ -185,7 +187,7 @@ void publishReadings(const std::uint32_t portDelay = 0) {
 
 void logTask(void *pvParameters) {
     while (true) {
-        publishReadings(2000);
+        publishReadings(1500);
     }
 }
 

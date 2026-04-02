@@ -6,6 +6,8 @@
 
 static const char *TAG = "MQTT";
 
+#define DEBUG 0
+
 void MQTT::getTopic(const char *topic, char *buf, const std::size_t len) {
     const std::int32_t n = snprintf(buf, len, "device/%s/%s", deviceID, topic);
     if (n < 0 || n >= len) {

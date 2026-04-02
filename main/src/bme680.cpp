@@ -13,6 +13,8 @@ namespace BME680 {
 
 static const char *TAG = "BME680";
 
+#define DEBUG 0
+
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), measStart(0), measDur(0), initialised(false) {}
 
@@ -194,14 +196,14 @@ bool Device::performReading() {
     if ((data.status & BME68X_HEAT_STAB_MSK) && (data.status & BME68X_GASM_VALID_MSK)) {
 #if DEBUG
         ESP_LOGI(TAG, "Gas and Heat ready. Heat: %d, Gas: %d, Status: %u",
-#endif
                  BME68X_HEAT_STAB_MSK, BME68X_GASM_VALID_MSK, data.status);
+#endif
         gasResistance = data.gas_resistance;
     } else {
 #if DEBUG
         ESP_LOGW(TAG, "Gas and Heat not ready! Heat: %d, Gas: %d, Status: %u",
-#endif
                  BME68X_HEAT_STAB_MSK, BME68X_GASM_VALID_MSK, data.status);
+#endif
         gasResistance = 0.0f;
     }
     return true;

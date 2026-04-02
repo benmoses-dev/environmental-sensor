@@ -10,6 +10,8 @@
 
 static const char *TAG = "NETWORK";
 
+#define DEBUG 0
+
 void WIFI::wifiEventHandler(void *arg, esp_event_base_t base, std::int32_t id,
                             void *data) {
     ESP_LOGI(TAG, "WiFi handler fired! base=%s id=%d", base, id);

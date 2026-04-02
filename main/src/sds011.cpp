@@ -4,11 +4,14 @@
 #include "esp_log.h"
 #include "events.hpp"
 #include "utils.hpp"
+#include <cstring>
 #include <ctime>
 
 namespace SDS011 {
 
 static const char *TAG = "SDS011";
+
+#define DEBUG 0
 
 Device::Device(const uart_port_t p) : port(p), initialised(false) {};
 
@@ -51,20 +54,118 @@ bool Device::init() {
 #if DEBUG
     ESP_LOGI(TAG, "SDS011 UART initialised");
 #endif
-    if (!sendCommand(0x06, 0x00)) { // 0x06 = work state, 0x00 = work
-#if DEBUG
-        ESP_LOGE(TAG, "Failed to set SDS011 to working state!");
-#endif
+    if (!wake()) {
         return false;
     }
-#if DEBUG
-    ESP_LOGI(TAG, "Set SDS011 to working state!");
-#endif
-    uart_flush_input(port);
     taskENTER_CRITICAL(&initMux);
     initialised = true;
     taskEXIT_CRITICAL(&initMux);
     xTaskCreate(sdsTask, "SDSTask", 4096, this, 5, NULL);
+    return true;
+}
+
+bool Device::wake() {
+    uart_flush_input(port);
+    if (!sendCommand(SDS_WAKE_FRAME)) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to set SDS011 to working mode!");
+#endif
+        return false;
+    }
+    std::uint8_t res[SDS_RESPONSE_LENGTH];
+    if (!readResponse(res, pdMS_TO_TICKS(1000))) {
+#if DEBUG
+        ESP_LOGW(TAG, "Failed to query SDS011 working mode!");
+#endif
+        return false;
+    }
+    if (res[2] != 0x06) {
+#if DEBUG
+        ESP_LOGW(TAG, "Working mode query incorrect command!");
+#endif
+        return false;
+    }
+    if (res[4] != 0x01) { // Work
+#if DEBUG
+        ESP_LOGW(TAG, "Working mode query returned non-working result!");
+#endif
+        return false;
+    }
+#if DEBUG
+    ESP_LOGI(TAG, "Set SDS011 to working state.");
+#endif
+    uart_flush_input(port);
+    if (!sendCommand(SDS_SET_ACTIVE_MODE_FRAME)) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to set SDS011 to active mode!");
+#endif
+        return false;
+    }
+    if (!readResponse(res, pdMS_TO_TICKS(1000))) {
+#if DEBUG
+        ESP_LOGW(TAG, "Failed to query SDS011 active mode!");
+#endif
+        return false;
+    }
+    if (res[2] != 0x02) {
+#if DEBUG
+        ESP_LOGW(TAG, "Active mode query incorrect command!");
+#endif
+        return false;
+    }
+    if (res[4] != 0x00) { // Active
+#if DEBUG
+        ESP_LOGW(TAG, "Active mode query returned non-active result!");
+#endif
+        return false;
+    }
+#if DEBUG
+    ESP_LOGI(TAG, "Set SDS011 to active mode.");
+#endif
+    return true;
+}
+
+bool Device::sleep() {
+    taskENTER_CRITICAL(&initMux);
+    initialised = false;
+    taskEXIT_CRITICAL(&initMux);
+    delay_ms(300);
+    uart_flush_input(port);
+#if DEBUG
+    ESP_LOGI(TAG, "Setting SDS011 to sleeping state...");
+#endif
+    if (!sendCommand(SDS_SLEEP_FRAME)) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to set SDS011 to sleeping state!");
+#endif
+        return false;
+    }
+    std::uint8_t res[SDS_RESPONSE_LENGTH];
+    if (!readResponse(res, pdMS_TO_TICKS(1000))) {
+#if DEBUG
+        ESP_LOGW(TAG, "Failed to query SDS011 working mode!");
+#endif
+        return false;
+    }
+    if (res[2] != 0x06) {
+#if DEBUG
+        ESP_LOGW(TAG, "Working mode query incorrect command!");
+#endif
+        return false;
+    }
+    if (res[4] != 0x00) { // Sleep
+#if DEBUG
+        ESP_LOGW(TAG, "Working mode query returned non-sleeping result!");
+#endif
+        return false;
+    }
+#if DEBUG
+    ESP_LOGI(TAG, "Set SDS011 to sleeping state.");
+#endif
+    taskENTER_CRITICAL(&readingMux);
+    reading = {};
+    reading.valid = false;
+    taskEXIT_CRITICAL(&readingMux);
     return true;
 }
 
@@ -74,54 +175,6 @@ bool Device::isInitialised() {
     res = initialised;
     taskEXIT_CRITICAL(&initMux);
     return res;
-}
-
-bool Device::sendCommand(const std::uint8_t command, const std::uint8_t param) {
-    std::uint8_t frame[19] = {0xAA, 0xB4, command, param, 0x00, 0x00, 0x00,
-                              0x00, 0x00, 0x00,    0x00,  0x00, 0x00, 0x00,
-                              0x00, 0x00, 0xFF,    0x00,  0xAB};
-    std::uint8_t checksum = 0; // checksum = sum of bytes [2..16]
-    for (std::size_t i = 2; i <= 16; ++i) {
-        checksum += frame[i];
-    }
-    frame[17] = checksum;
-    const std::int32_t written =
-        uart_write_bytes(port, reinterpret_cast<const char *>(frame), sizeof(frame));
-    if (written != sizeof(frame)) {
-#if DEBUG
-        ESP_LOGE(TAG, "Failed to send SDS011 command 0x%02X", command);
-#endif
-        return false;
-    }
-    const esp_err_t err = uart_wait_tx_done(port, pdMS_TO_TICKS(100));
-    if (err != ESP_OK) {
-#if DEBUG
-        ESP_LOGE(TAG, "UART TX did not complete!");
-#endif
-        return false;
-    }
-    return true;
-}
-
-bool Device::sleep() {
-    if (!sendCommand(0x06, 0x01)) { // 0x06 = work state, 0x01 = sleep
-#if DEBUG
-        ESP_LOGE(TAG, "Failed to set SDS011 to sleeping state!");
-#endif
-        return false;
-    }
-#if DEBUG
-    ESP_LOGI(TAG, "Set SDS011 to sleeping state!");
-#endif
-    uart_flush_input(port);
-    taskENTER_CRITICAL(&readingMux);
-    reading = {};
-    reading.valid = false;
-    taskEXIT_CRITICAL(&readingMux);
-    taskENTER_CRITICAL(&initMux);
-    initialised = false;
-    taskEXIT_CRITICAL(&initMux);
-    return true;
 }
 
 void Device::logReadings(QueueHandle_t q) {
@@ -135,28 +188,42 @@ void Device::logReadings(QueueHandle_t q) {
     xQueueSend(q, &pm10Event, portMAX_DELAY);
 }
 
+bool Device::sendCommand(const std::uint8_t (&frame)[SDS_FRAME_LENGTH]) {
+    std::uint8_t temp[SDS_FRAME_LENGTH];
+    std::memcpy(temp, frame, SDS_FRAME_LENGTH);
+    std::uint8_t checksum = 0;
+    for (std::size_t i = 2; i <= 16; ++i) {
+        checksum += temp[i];
+    }
+    temp[17] = checksum;
+    const std::int32_t written =
+        uart_write_bytes(port, reinterpret_cast<const char *>(temp), SDS_FRAME_LENGTH);
+    if (written != SDS_FRAME_LENGTH) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to send SDS011 frame");
+#endif
+        return false;
+    }
+    const esp_err_t err = uart_wait_tx_done(port, pdMS_TO_TICKS(100));
+    if (err != ESP_OK) {
+#if DEBUG
+        ESP_LOGE(TAG, "UART TX did not complete!");
+#endif
+        return false;
+    }
+    return true;
+}
+
 void Device::start() {
-    std::uint8_t byte = 0;
-    std::uint8_t frame[10];
+    std::uint8_t frame[SDS_RESPONSE_LENGTH];
     uart_flush_input(port);
     while (true) {
         if (!isInitialised()) {
-            ESP_LOGI(TAG, "SDS011 task stopping");
+            ESP_LOGI(TAG, "SDS011 task stopping...");
             vTaskDelete(NULL);
             return;
         }
-        std::int32_t len = uart_read_bytes(port, &byte, 1, pdMS_TO_TICKS(2000));
-        if (len != 1) {
-            ESP_LOGW(TAG, "Timed out waiting for SDS011 data");
-            continue;
-        }
-        if (byte != 0xAA) {
-            continue;
-        }
-        frame[0] = byte;
-        len = uart_read_bytes(port, frame + 1, 9, pdMS_TO_TICKS(200));
-        if (len != 9) {
-            ESP_LOGW(TAG, "Incorrect number of bytes read from uart");
+        if (!readResponse(frame, 100)) {
             continue;
         }
         Reading res{};
@@ -164,25 +231,39 @@ void Device::start() {
         taskENTER_CRITICAL(&readingMux);
         reading = res;
         taskEXIT_CRITICAL(&readingMux);
-        delay_ms(500);
     }
 }
 
-void Device::parseFrame(const std::uint8_t frame[10], Reading &reading) {
+bool Device::readResponse(std::uint8_t (&resp)[SDS_RESPONSE_LENGTH], TickType_t timeout) {
+    std::uint8_t byte = 0;
+    std::int32_t len = uart_read_bytes(port, &byte, 1, timeout);
+    if (len != 1 || byte != 0xAA) {
+        return false;
+    }
+    resp[0] = byte;
+    len = uart_read_bytes(port, resp + 1, SDS_RESPONSE_LENGTH - 1, timeout);
+    if (len != SDS_RESPONSE_LENGTH - 1) {
+        ESP_LOGW(TAG, "Incorrect number of bytes read from uart");
+        return false;
+    }
+    std::uint8_t checksum = 0;
+    for (std::uint32_t i = 2; i <= 7; ++i) {
+        checksum += resp[i];
+    }
+    if (checksum != resp[8]) {
+        ESP_LOGW(TAG, "Incorrect checksum");
+        return false;
+    }
+    return true;
+}
+
+void Device::parseFrame(const std::uint8_t frame[SDS_RESPONSE_LENGTH], Reading &reading) {
     reading.valid = false;
     reading.pm2_5 = 0.0f;
     reading.pm10 = 0.0f;
     reading.t = 0;
     if (frame[0] != 0xAA || frame[1] != 0xC0 || frame[9] != 0xAB) {
         ESP_LOGW(TAG, "Incorrect frame format");
-        return;
-    }
-    std::uint8_t checksum = 0;
-    for (std::uint32_t i = 2; i <= 7; ++i) {
-        checksum += frame[i];
-    }
-    if (checksum != frame[8]) {
-        ESP_LOGW(TAG, "Incorrect checksum");
         return;
     }
     reading.valid = true;

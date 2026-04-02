@@ -18,8 +18,6 @@
 #define READ_SDS011 1
 #define READ_SCD41 0
 
-#define DEBUG 1
-
 inline constexpr i2c_port_t I2C_MASTER_NUM = I2C_NUM_0;
 inline constexpr std::uint32_t I2C_MASTER_FREQ_HZ = 100'000;
 inline constexpr std::int32_t I2C_MASTER_SDA_IO = 22;

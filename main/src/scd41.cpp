@@ -11,6 +11,8 @@ static constexpr std::uint16_t CMD_STOP_PERIODIC_MEASUREMENT = 0x3F86;
 static constexpr std::uint16_t CMD_READ_MEASUREMENT = 0xEC05;
 static constexpr std::uint16_t CMD_GET_DATA_READY_STATUS = 0xE4B8;
 
+#define DEBUG 0
+
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), initialised(false) {}
 
