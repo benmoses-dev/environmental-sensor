@@ -29,24 +29,42 @@ bool Device::init() {
     uartConfig.source_clk = UART_SCLK_DEFAULT;
     esp_err_t err = uart_driver_install(port, UART_BUF_SIZE, 0, 0, nullptr, 0);
     if (err != ESP_OK) {
+#if DEBUG
         ESP_LOGE(TAG, "Failed to install UART driver");
+#endif
         return false;
     }
     err = uart_param_config(port, &uartConfig);
     if (err != ESP_OK) {
+#if DEBUG
         ESP_LOGE(TAG, "Failed to configure UART");
+#endif
         return false;
     }
     err = uart_set_pin(port, TX_PIN, RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     if (err != ESP_OK) {
+#if DEBUG
         ESP_LOGE(TAG, "Failed to set UART pins");
+#endif
         return false;
     }
+#if DEBUG
     ESP_LOGI(TAG, "SDS011 UART initialised");
-    xTaskCreate(sdsTask, "SDSTask", 4096, this, 5, NULL);
+#endif
+    if (!sendCommand(0x06, 0x00)) { // 0x06 = work state, 0x00 = work
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to set SDS011 to working state!");
+#endif
+        return false;
+    }
+#if DEBUG
+    ESP_LOGI(TAG, "Set SDS011 to working state!");
+#endif
+    uart_flush_input(port);
     taskENTER_CRITICAL(&initMux);
     initialised = true;
     taskEXIT_CRITICAL(&initMux);
+    xTaskCreate(sdsTask, "SDSTask", 4096, this, 5, NULL);
     return true;
 }
 
@@ -58,7 +76,48 @@ bool Device::isInitialised() {
     return res;
 }
 
+bool Device::sendCommand(const std::uint8_t command, const std::uint8_t param) {
+    std::uint8_t frame[19] = {0xAA, 0xB4, command, param, 0x00, 0x00, 0x00,
+                              0x00, 0x00, 0x00,    0x00,  0x00, 0x00, 0x00,
+                              0x00, 0x00, 0xFF,    0x00,  0xAB};
+    std::uint8_t checksum = 0; // checksum = sum of bytes [2..16]
+    for (std::size_t i = 2; i <= 16; ++i) {
+        checksum += frame[i];
+    }
+    frame[17] = checksum;
+    const std::int32_t written =
+        uart_write_bytes(port, reinterpret_cast<const char *>(frame), sizeof(frame));
+    if (written != sizeof(frame)) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to send SDS011 command 0x%02X", command);
+#endif
+        return false;
+    }
+    const esp_err_t err = uart_wait_tx_done(port, pdMS_TO_TICKS(100));
+    if (err != ESP_OK) {
+#if DEBUG
+        ESP_LOGE(TAG, "UART TX did not complete!");
+#endif
+        return false;
+    }
+    return true;
+}
+
 bool Device::sleep() {
+    if (!sendCommand(0x06, 0x01)) { // 0x06 = work state, 0x01 = sleep
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to set SDS011 to sleeping state!");
+#endif
+        return false;
+    }
+#if DEBUG
+    ESP_LOGI(TAG, "Set SDS011 to sleeping state!");
+#endif
+    uart_flush_input(port);
+    taskENTER_CRITICAL(&readingMux);
+    reading = {};
+    reading.valid = false;
+    taskEXIT_CRITICAL(&readingMux);
     taskENTER_CRITICAL(&initMux);
     initialised = false;
     taskEXIT_CRITICAL(&initMux);
@@ -79,7 +138,13 @@ void Device::logReadings(QueueHandle_t q) {
 void Device::start() {
     std::uint8_t byte = 0;
     std::uint8_t frame[10];
+    uart_flush_input(port);
     while (true) {
+        if (!isInitialised()) {
+            ESP_LOGI(TAG, "SDS011 task stopping");
+            vTaskDelete(NULL);
+            return;
+        }
         std::int32_t len = uart_read_bytes(port, &byte, 1, pdMS_TO_TICKS(2000));
         if (len != 1) {
             ESP_LOGW(TAG, "Timed out waiting for SDS011 data");

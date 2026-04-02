@@ -67,7 +67,7 @@ void toJson(const Event &event, char *buf, const std::size_t size) {
 void goToSleep() {
     if (OPERATING_MODE > 0 && SLEEP_PERIOD_S > 0) {
 #if DEBUG
-        ESP_LOGI(TAG, "Shutting down sensors and entering deep sleep...");
+        ESP_LOGI(TAG, "Entering deep sleep...");
 #endif
         const std::uint64_t sleepDur =
             static_cast<std::uint64_t>(SLEEP_PERIOD_S) * 1'000'000ULL;
@@ -81,6 +81,9 @@ void goToSleep() {
 }
 
 void shutdownSensors() {
+#if DEBUG
+    ESP_LOGI(TAG, "Shutting down sensors...");
+#endif
     for (ISensor *s : sensors) {
         if (s->isInitialised()) {
             s->sleep();

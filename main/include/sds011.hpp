@@ -36,6 +36,7 @@ class Device : public ISensor {
     portMUX_TYPE initMux = portMUX_INITIALIZER_UNLOCKED;
 
     static void parseFrame(const std::uint8_t frame[10], Reading &r);
+    bool sendCommand(const std::uint8_t command, const std::uint8_t param);
 };
 
 } // namespace SDS011
