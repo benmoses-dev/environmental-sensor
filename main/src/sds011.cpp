@@ -11,7 +11,7 @@ namespace SDS011 {
 
 static const char *TAG = "SDS011";
 
-#define DEBUG 1
+#define DEBUG 0
 
 Device::Device(const uart_port_t p) : port(p), initialised(false) {};
 

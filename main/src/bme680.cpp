@@ -14,7 +14,7 @@ namespace BME680 {
 
 static const char *TAG = "BME680";
 
-#define DEBUG 1
+#define DEBUG 0
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), measStart(0), measDur(0), initialised(false) {}

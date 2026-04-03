@@ -13,6 +13,7 @@
 #include "sensor.hpp"
 #include "utils.hpp"
 #include "wifi.hpp"
+#include <algorithm>
 
 static const char *TAG = "MAIN";
 
@@ -54,7 +55,8 @@ ISensor *sensors[] = {
 };
 
 const bool INITIALISE_I2C = READ_BME280 || READ_BME680 || READ_SCD41;
-const std::uint32_t SLEEP_PERIOD_S = MEASUREMENT_PERIOD_S - WARMUP_TIME_S;
+const std::uint32_t SLEEP_PERIOD_S = static_cast<std::uint32_t>(std::max(
+    static_cast<int>(MEASUREMENT_PERIOD_S) - static_cast<int>(WARMUP_TIME_S), 0));
 
 void toJson(const Event &event, char *buf, const std::size_t size) {
     const std::int32_t n = snprintf(buf, size, "{\"time\":%lld,\"val\":%.2f}",
