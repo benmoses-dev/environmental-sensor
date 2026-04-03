@@ -26,6 +26,7 @@ inline constexpr std::int32_t I2C_MASTER_SCL_IO = 23;
 inline constexpr std::uint8_t BME280_ADDR = 0x76;
 inline constexpr std::uint8_t BME680_ADDR = 0x77;
 inline constexpr std::uint8_t BME680_CHIP_ID = 0x61;
+inline constexpr std::uint32_t BME680_HEATER_FREQ = 1000;
 inline constexpr std::uint8_t SCD41_ADDR = 0x62;
 
 inline constexpr uart_port_t UART_PORT = UART_NUM_2;
@@ -44,5 +45,22 @@ inline constexpr float GAS_ADJUST = 0.0;
  * 1 or greater = periodic
  */
 inline constexpr std::uint8_t OPERATING_MODE = 1;
-inline constexpr std::uint32_t MEASUREMENT_PERIOD_S = 60; // Increase to save power
-inline constexpr std::uint32_t WARMUP_TIME_S = 30;
+/**
+ * Periodic mode only.
+ * This is the time to wait for the BME680's heater and the SDS011's fan to stabilise.
+ * I have found that at least 30 seconds is necessary, and 60 seconds is preferred.
+ */
+inline constexpr std::uint32_t WARMUP_TIME_S = 60;
+/**
+ * Periodic mode only.
+ * This is how long to wait between measurement publishing.
+ * This must be at least as long as the warmup time.
+ * Longer durations reduce power consumption.
+ */
+inline constexpr std::uint32_t MEASUREMENT_PERIOD_S = 120;
+/**
+ * Continuous mode only.
+ * This determines how long between reading/publishing in continuous mode.
+ * Increasing this slightly reduces power consumption.
+ */
+inline constexpr std::uint32_t MAIN_LOOP_S = 5000; // Continuous loop frequency

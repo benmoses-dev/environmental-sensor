@@ -122,7 +122,7 @@ void Device::start() {
         if (!performReading()) {
             ESP_LOGW(TAG, "Failed to take reading in read-loop!");
         }
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(900));
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(BME680_HEATER_FREQ));
     }
 }
 

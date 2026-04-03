@@ -110,7 +110,7 @@ void readTask(void *pvParameters) {
     TickType_t last = xTaskGetTickCount();
     while (true) {
         takeReadings();
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(1000));
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(MAIN_LOOP_S));
     }
 }
 
