@@ -6,6 +6,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "utils.hpp"
+#include <algorithm>
 #include <cmath>
 #include <ctime>
 
@@ -13,12 +14,17 @@ namespace BME680 {
 
 static const char *TAG = "BME680";
 
-#define DEBUG 0
+#define DEBUG 1
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), measStart(0), measDur(0), initialised(false) {}
 
 Device::~Device() {}
+
+void bme680Task(void *pvParameters) {
+    Device *bme = static_cast<Device *>(pvParameters);
+    bme->start();
+}
 
 bool Device::init() {
 #if DEBUG
@@ -50,7 +56,7 @@ bool Device::init() {
         return false;
     }
     /**
-     * LPF for sensor readings. 3 is a nice middle ground.
+     * LPF for sensor readings.
      */
     if (!setIIRFilterSize(BME68X_FILTER_OFF)) {
 #if DEBUG
@@ -101,7 +107,23 @@ bool Device::init() {
     taskENTER_CRITICAL(&initMux);
     initialised = true;
     taskEXIT_CRITICAL(&initMux);
+    xTaskCreate(bme680Task, "BME680Task", 4096, this, 5, NULL);
     return true;
+}
+
+void Device::start() {
+    while (true) {
+        TickType_t last = xTaskGetTickCount();
+        if (!isInitialised()) {
+            ESP_LOGI(TAG, "BME680 read-loop task stopping...");
+            vTaskDelete(NULL);
+            return;
+        }
+        if (!performReading()) {
+            ESP_LOGW(TAG, "Failed to take reading in read-loop!");
+        }
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(900));
+    }
 }
 
 bool Device::isInitialised() {
@@ -113,14 +135,19 @@ bool Device::isInitialised() {
 }
 
 void Device::logReadings(QueueHandle_t q) {
-    if (!performReading()) {
+    Reading res{};
+    taskENTER_CRITICAL(&readingMux);
+    res = reading;
+    reading.read = true;
+    taskEXIT_CRITICAL(&readingMux);
+    if (res.read) {
+        ESP_LOGW(TAG, "Reading has already been read...");
         return;
     }
-    const time_t tval = time(NULL);
-    const Event tEvent = {temperature + TEMP_ADJUST, tval, EventType::TEMP};
-    const Event hEvent = {humidity + HUM_ADJUST, tval, EventType::HUM};
-    const Event pEvent = {pressure + PRES_ADJUST, tval, EventType::PRES};
-    const Event gEvent = {gasResistance + GAS_ADJUST, tval, EventType::GAS};
+    const Event tEvent = {res.temperature + TEMP_ADJUST, res.tval, EventType::TEMP};
+    const Event hEvent = {res.humidity + HUM_ADJUST, res.tval, EventType::HUM};
+    const Event pEvent = {res.pressure + PRES_ADJUST, res.tval, EventType::PRES};
+    const Event gEvent = {res.gasResistance + GAS_ADJUST, res.tval, EventType::GAS};
     xQueueSend(q, &tEvent, portMAX_DELAY);
     xQueueSend(q, &hEvent, portMAX_DELAY);
     xQueueSend(q, &pEvent, portMAX_DELAY);
@@ -131,6 +158,15 @@ bool Device::sleep() {
     taskENTER_CRITICAL(&initMux);
     initialised = false;
     taskEXIT_CRITICAL(&initMux);
+    // Todo: we may need to wait here for the task to kill itself
+    std::int8_t res =
+        bme68x_set_op_mode(BME68X_SLEEP_MODE, &gas_sensor); // Probably not needed
+    if (res != BME68X_OK) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to set operating mode while sleeping!");
+#endif
+        return 0;
+    }
     return true;
 }
 
@@ -141,19 +177,20 @@ std::uint32_t Device::beginReading() {
 #endif
         return measStart + measDur;
     }
-    std::int8_t res = bme68x_set_op_mode(BME68X_FORCED_MODE, &gas_sensor);
+    const std::int8_t res = bme68x_set_op_mode(BME68X_FORCED_MODE, &gas_sensor);
     if (res != BME68X_OK) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to set operating mode while starting reading!");
 #endif
         return 0;
     }
-    std::uint32_t readTime =
-        bme68x_get_meas_dur(BME68X_FORCED_MODE, &gas_conf, &gas_sensor);
-    std::uint32_t heatTime = static_cast<std::uint32_t>(gas_heatr_conf.heatr_dur) * 1000;
-    std::uint32_t delay = readTime + heatTime;
-    measDur = delay / 1000;
     measStart = millis();
+    const std::uint32_t readTime =
+        bme68x_get_meas_dur(BME68X_FORCED_MODE, &gas_conf, &gas_sensor);
+    const std::uint32_t heatTime =
+        static_cast<std::uint32_t>(gas_heatr_conf.heatr_dur) * 1000;
+    const std::uint32_t delay = readTime + heatTime;
+    measDur = delay / 1000;
 #if DEBUG
     ESP_LOGI(TAG, "Read time: %u", readTime);
     ESP_LOGI(TAG, "Heat time: %u", heatTime);
@@ -165,53 +202,59 @@ std::uint32_t Device::beginReading() {
 }
 
 bool Device::performReading() {
-    std::uint32_t measEnd = beginReading();
+    const std::uint32_t measEnd = beginReading();
     if (measEnd == 0) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to perform reading!");
 #endif
         return false;
     }
-    std::int32_t remaining = remainingReadingMillis();
+    const std::int32_t remaining = remainingReadingMillis();
 #if DEBUG
     ESP_LOGI(TAG, "remaining millis: %d", remaining);
 #endif
     if (remaining > 0) {
-        vTaskDelay(pdMS_TO_TICKS(static_cast<std::uint32_t>(remaining) + 5));
+        delay_ms(static_cast<std::uint32_t>(remaining) + 5);
     }
     measStart = 0;
     measDur = 0;
     bme68x_data data{};
     std::uint8_t n = 0;
-    std::int8_t res = bme68x_get_data(BME68X_FORCED_MODE, &data, &n, &gas_sensor);
+    const std::int8_t res = bme68x_get_data(BME68X_FORCED_MODE, &data, &n, &gas_sensor);
     if (res != BME68X_OK || n == 0) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to get data from device!");
 #endif
         return false;
     }
-    temperature = data.temperature;
-    humidity = data.humidity;
-    pressure = data.pressure;
+    Reading r{};
+    r.temperature = data.temperature;
+    r.humidity = data.humidity;
+    r.pressure = data.pressure;
     if ((data.status & BME68X_HEAT_STAB_MSK) && (data.status & BME68X_GASM_VALID_MSK)) {
 #if DEBUG
         ESP_LOGI(TAG, "Gas and Heat ready. Heat: %d, Gas: %d, Status: %u",
                  BME68X_HEAT_STAB_MSK, BME68X_GASM_VALID_MSK, data.status);
 #endif
-        gasResistance = data.gas_resistance;
+        r.gasResistance = data.gas_resistance;
     } else {
 #if DEBUG
         ESP_LOGW(TAG, "Gas and Heat not ready! Heat: %d, Gas: %d, Status: %u",
                  BME68X_HEAT_STAB_MSK, BME68X_GASM_VALID_MSK, data.status);
 #endif
-        gasResistance = 0.0f;
+        r.gasResistance = 0.0f;
     }
+    r.tval = time(NULL);
+    r.read = false;
+    taskENTER_CRITICAL(&readingMux);
+    reading = r;
+    taskEXIT_CRITICAL(&readingMux);
     return true;
 }
 
 float Device::readAltitude(const float seaLevelPressure) {
     performReading();
-    const float atmospheric = pressure / 100.0F;
+    const float atmospheric = reading.pressure / 100.0F;
     return 44330.0 * (1.0 - pow(atmospheric / seaLevelPressure, 0.1903));
 }
 
@@ -312,7 +355,7 @@ BME68X_INTF_RET_TYPE Device::read(std::uint8_t regAddr, std::uint8_t *data,
     }
     Device *dev = static_cast<Device *>(interface);
     esp_err_t err = i2c_master_write_read_device(dev->i2c_port, dev->i2c_addr, &regAddr,
-                                                 1, data, len, pdMS_TO_TICKS(1000));
+                                                 1, data, len, pdMS_TO_TICKS(100));
     return (err == ESP_OK) ? BME68X_OK : -1;
 }
 
@@ -326,7 +369,7 @@ BME68X_INTF_RET_TYPE Device::write(std::uint8_t regAddr, const std::uint8_t *dat
     memcpy(&buffer[1], data, len);
     Device *dev = static_cast<Device *>(interface);
     esp_err_t err = i2c_master_write_to_device(dev->i2c_port, dev->i2c_addr, buffer,
-                                               len + 1, pdMS_TO_TICKS(1000));
+                                               len + 1, pdMS_TO_TICKS(100));
     return (err == ESP_OK) ? BME68X_OK : -1;
 }
 

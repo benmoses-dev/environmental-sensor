@@ -86,8 +86,8 @@ bool MQTT::publish(const char *topic, const char *message) {
         }
         return false;
     }
-    const std::uint32_t pending = pendingPublishes.load();
 #if DEBUG
+    const std::uint32_t pending = pendingPublishes.load();
     ESP_LOGI(TAG, "Queued publish to %s, pending=%lu", buf,
              static_cast<unsigned long>(pending));
 #endif

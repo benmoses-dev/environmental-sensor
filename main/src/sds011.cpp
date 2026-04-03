@@ -11,7 +11,7 @@ namespace SDS011 {
 
 static const char *TAG = "SDS011";
 
-#define DEBUG 0
+#define DEBUG 1
 
 Device::Device(const uart_port_t p) : port(p), initialised(false) {};
 
@@ -178,12 +178,17 @@ bool Device::isInitialised() {
 }
 
 void Device::logReadings(QueueHandle_t q) {
-    Reading at{};
+    Reading res{};
     taskENTER_CRITICAL(&readingMux);
-    at = reading;
+    res = reading;
+    reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
-    const Event pm2_5Event = {at.pm2_5, at.t, EventType::PM2_5};
-    const Event pm10Event = {at.pm10, at.t, EventType::PM10};
+    if (res.read) {
+        ESP_LOGW(TAG, "Reading has already been read...");
+        return;
+    }
+    const Event pm2_5Event = {res.pm2_5, res.t, EventType::PM2_5};
+    const Event pm10Event = {res.pm10, res.t, EventType::PM10};
     xQueueSend(q, &pm2_5Event, portMAX_DELAY);
     xQueueSend(q, &pm10Event, portMAX_DELAY);
 }
@@ -219,7 +224,7 @@ void Device::start() {
     uart_flush_input(port);
     while (true) {
         if (!isInitialised()) {
-            ESP_LOGI(TAG, "SDS011 task stopping...");
+            ESP_LOGI(TAG, "SDS011 read-loop task stopping...");
             vTaskDelete(NULL);
             return;
         }
@@ -228,9 +233,11 @@ void Device::start() {
         }
         Reading res{};
         parseFrame(frame, res);
-        taskENTER_CRITICAL(&readingMux);
-        reading = res;
-        taskEXIT_CRITICAL(&readingMux);
+        if (res.valid) {
+            taskENTER_CRITICAL(&readingMux);
+            reading = res;
+            taskEXIT_CRITICAL(&readingMux);
+        }
     }
 }
 
@@ -262,6 +269,7 @@ void Device::parseFrame(const std::uint8_t frame[SDS_RESPONSE_LENGTH], Reading &
     reading.pm2_5 = 0.0f;
     reading.pm10 = 0.0f;
     reading.t = 0;
+    reading.read = false;
     if (frame[0] != 0xAA || frame[1] != 0xC0 || frame[9] != 0xAB) {
         ESP_LOGW(TAG, "Incorrect frame format");
         return;

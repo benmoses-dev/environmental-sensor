@@ -15,6 +15,7 @@ struct Reading {
     float pm10 = 0.0f;
     bool valid = false;
     time_t t = 0;
+    bool read = false;
 };
 
 class Device : public ISensor {

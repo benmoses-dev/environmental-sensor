@@ -8,8 +8,18 @@
 #include "sensor.hpp"
 #include <cstdint>
 #include <cstring>
+#include <ctime>
 
 namespace BME680 {
+
+struct Reading {
+    float temperature = 0.0f;
+    float pressure = 0.0f;
+    float humidity = 0.0f;
+    float gasResistance = 0.0f;
+    time_t tval = 0;
+    bool read = false;
+};
 
 class Device : public ISensor {
   public:
@@ -21,20 +31,19 @@ class Device : public ISensor {
     void logReadings(QueueHandle_t q) override;
     bool sleep() override;
     bool isInitialised() override;
+    void start();
 
   private:
     const i2c_port_t i2c_port;
     const std::uint8_t i2c_addr;
     std::int32_t _sensorID;
     std::uint32_t measStart = 0;
-    std::uint16_t measDur = 0;
+    std::uint32_t measDur = 0;
     bool initialised;
     portMUX_TYPE initMux = portMUX_INITIALIZER_UNLOCKED;
 
-    float temperature;
-    float pressure;
-    float humidity;
-    float gasResistance;
+    Reading reading;
+    portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
 
     struct bme68x_dev gas_sensor;
     struct bme68x_conf gas_conf;

@@ -62,7 +62,7 @@ bool Device::sleep() {
 
 bool Device::readBytes(std::uint8_t *buffer, std::size_t len) {
     const esp_err_t res =
-        i2c_master_read_from_device(i2c_port, i2c_addr, buffer, len, pdMS_TO_TICKS(200));
+        i2c_master_read_from_device(i2c_port, i2c_addr, buffer, len, pdMS_TO_TICKS(100));
     return res == ESP_OK;
 }
 
@@ -145,7 +145,7 @@ bool Device::write16(const std::uint16_t value) {
     data[0] = value >> 8;
     data[1] = value & 0xFF;
     const esp_err_t res =
-        i2c_master_write_to_device(i2c_port, i2c_addr, data, 2, pdMS_TO_TICKS(1000));
+        i2c_master_write_to_device(i2c_port, i2c_addr, data, 2, pdMS_TO_TICKS(100));
     return res == ESP_OK;
 }
 
@@ -157,7 +157,7 @@ bool Device::write16WithArg(const std::uint16_t cmd, const std::uint16_t arg) {
     data[3] = arg & 0xFF;
     data[4] = getCRC8(&data[2]);
     const esp_err_t res =
-        i2c_master_write_to_device(i2c_port, i2c_addr, data, 5, pdMS_TO_TICKS(1000));
+        i2c_master_write_to_device(i2c_port, i2c_addr, data, 5, pdMS_TO_TICKS(100));
     return res == ESP_OK;
 }
 

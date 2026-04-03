@@ -263,14 +263,13 @@ float Device::seaLevelForAltitude(const float altitude, const float atmospheric)
 std::uint8_t Device::read8(std::uint8_t reg) const {
     std::uint8_t val;
     i2c_master_write_read_device(i2c_port, i2c_addr, &reg, 1, &val, 1,
-                                 pdMS_TO_TICKS(1000));
+                                 pdMS_TO_TICKS(100));
     return val;
 }
 
 std::uint16_t Device::read16(std::uint8_t reg) const {
     std::uint8_t buf[2];
-    i2c_master_write_read_device(i2c_port, i2c_addr, &reg, 1, buf, 2,
-                                 pdMS_TO_TICKS(1000));
+    i2c_master_write_read_device(i2c_port, i2c_addr, &reg, 1, buf, 2, pdMS_TO_TICKS(100));
     return (buf[0] << 8) | buf[1];
 }
 
@@ -289,15 +288,14 @@ std::int16_t Device::readS16_LE(std::uint8_t reg) const {
 
 std::uint32_t Device::read24(std::uint8_t reg) const {
     std::uint8_t buf[3];
-    i2c_master_write_read_device(i2c_port, i2c_addr, &reg, 1, buf, 3,
-                                 pdMS_TO_TICKS(1000));
+    i2c_master_write_read_device(i2c_port, i2c_addr, &reg, 1, buf, 3, pdMS_TO_TICKS(100));
     return (static_cast<std::uint32_t>(buf[0]) << 16) |
            (static_cast<std::uint32_t>(buf[1]) << 8) | buf[2];
 }
 
 void Device::write8(std::uint8_t reg, std::uint8_t value) const {
     std::uint8_t buf[2] = {reg, value};
-    i2c_master_write_to_device(i2c_port, i2c_addr, buf, 2, pdMS_TO_TICKS(1000));
+    i2c_master_write_to_device(i2c_port, i2c_addr, buf, 2, pdMS_TO_TICKS(100));
 }
 
 } // namespace BME280
