@@ -6,7 +6,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "utils.hpp"
-#include <algorithm>
 #include <cmath>
 #include <ctime>
 
@@ -101,9 +100,7 @@ bool Device::init() {
 #endif
         return false;
     }
-#if DEBUG
     ESP_LOGI(TAG, "BME680 configured successfully!");
-#endif
     taskENTER_CRITICAL(&initMux);
     initialised = true;
     taskEXIT_CRITICAL(&initMux);
@@ -115,14 +112,18 @@ void Device::start() {
     while (true) {
         TickType_t last = xTaskGetTickCount();
         if (!isInitialised()) {
+#if DEBUG
             ESP_LOGI(TAG, "BME680 read-loop task stopping...");
+#endif
             vTaskDelete(NULL);
             return;
         }
         if (!performReading()) {
+#if DEBUG
             ESP_LOGW(TAG, "Failed to take reading in read-loop!");
+#endif
         }
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(BME680_HEATER_FREQ));
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(BME680_HEATER_FREQ_MS));
     }
 }
 
@@ -140,8 +141,10 @@ void Device::logReadings(QueueHandle_t q) {
     res = reading;
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
-    if (res.read) {
-        ESP_LOGW(TAG, "Reading has already been read...");
+    if (res.read || !res.valid) {
+#if DEBUG
+        ESP_LOGW(TAG, "Reading has already been read or is invalid...");
+#endif
         return;
     }
     const Event tEvent = {res.temperature + TEMP_ADJUST, res.tval, EventType::TEMP};
@@ -162,9 +165,7 @@ bool Device::sleep() {
     std::int8_t res =
         bme68x_set_op_mode(BME68X_SLEEP_MODE, &gas_sensor); // Probably not needed
     if (res != BME68X_OK) {
-#if DEBUG
         ESP_LOGE(TAG, "Failed to set operating mode while sleeping!");
-#endif
         return 0;
     }
     return true;
@@ -246,6 +247,7 @@ bool Device::performReading() {
     }
     r.tval = time(NULL);
     r.read = false;
+    r.valid = true;
     taskENTER_CRITICAL(&readingMux);
     reading = r;
     taskEXIT_CRITICAL(&readingMux);
@@ -298,7 +300,7 @@ bool Device::setGasHeater(std::uint16_t heaterTemp, std::uint16_t heaterTime) {
         gas_heatr_conf.heatr_temp = heaterTemp;
         gas_heatr_conf.heatr_dur = heaterTime;
     }
-    std::int8_t res =
+    const std::int8_t res =
         bme68x_set_heatr_conf(BME68X_FORCED_MODE, &gas_heatr_conf, &gas_sensor);
     return res == 0;
 }
@@ -308,7 +310,7 @@ bool Device::setODR(std::uint8_t odr) {
         return false;
     }
     gas_conf.odr = odr;
-    std::int8_t res = bme68x_set_conf(&gas_conf, &gas_sensor);
+    const std::int8_t res = bme68x_set_conf(&gas_conf, &gas_sensor);
     return res == 0;
 }
 
@@ -317,7 +319,7 @@ bool Device::setTemperatureOversampling(std::uint8_t oversample) {
         return false;
     }
     gas_conf.os_temp = oversample;
-    std::int8_t res = bme68x_set_conf(&gas_conf, &gas_sensor);
+    const std::int8_t res = bme68x_set_conf(&gas_conf, &gas_sensor);
     return res == 0;
 }
 
@@ -326,7 +328,7 @@ bool Device::setHumidityOversampling(std::uint8_t oversample) {
         return false;
     }
     gas_conf.os_hum = oversample;
-    std::int8_t res = bme68x_set_conf(&gas_conf, &gas_sensor);
+    const std::int8_t res = bme68x_set_conf(&gas_conf, &gas_sensor);
     return res == 0;
 }
 
@@ -335,7 +337,7 @@ bool Device::setPressureOversampling(std::uint8_t oversample) {
         return false;
     }
     gas_conf.os_pres = oversample;
-    std::int8_t res = bme68x_set_conf(&gas_conf, &gas_sensor);
+    const std::int8_t res = bme68x_set_conf(&gas_conf, &gas_sensor);
     return res == 0;
 }
 
@@ -344,7 +346,7 @@ bool Device::setIIRFilterSize(std::uint8_t filtersize) {
         return false;
     }
     gas_conf.filter = filtersize;
-    std::int8_t res = bme68x_set_conf(&gas_conf, &gas_sensor);
+    const std::int8_t res = bme68x_set_conf(&gas_conf, &gas_sensor);
     return res == 0;
 }
 
@@ -354,8 +356,8 @@ BME68X_INTF_RET_TYPE Device::read(std::uint8_t regAddr, std::uint8_t *data,
         return -1;
     }
     Device *dev = static_cast<Device *>(interface);
-    esp_err_t err = i2c_master_write_read_device(dev->i2c_port, dev->i2c_addr, &regAddr,
-                                                 1, data, len, pdMS_TO_TICKS(100));
+    const esp_err_t err = i2c_master_write_read_device(
+        dev->i2c_port, dev->i2c_addr, &regAddr, 1, data, len, pdMS_TO_TICKS(100));
     return (err == ESP_OK) ? BME68X_OK : -1;
 }
 
@@ -364,12 +366,12 @@ BME68X_INTF_RET_TYPE Device::write(std::uint8_t regAddr, const std::uint8_t *dat
     if (data == nullptr || len == 0 || len > 32) {
         return -1;
     }
-    uint8_t buffer[33];
+    std::uint8_t buffer[33];
     buffer[0] = regAddr;
     memcpy(&buffer[1], data, len);
     Device *dev = static_cast<Device *>(interface);
-    esp_err_t err = i2c_master_write_to_device(dev->i2c_port, dev->i2c_addr, buffer,
-                                               len + 1, pdMS_TO_TICKS(100));
+    const esp_err_t err = i2c_master_write_to_device(dev->i2c_port, dev->i2c_addr, buffer,
+                                                     len + 1, pdMS_TO_TICKS(100));
     return (err == ESP_OK) ? BME68X_OK : -1;
 }
 

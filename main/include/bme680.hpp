@@ -19,6 +19,7 @@ struct Reading {
     float gasResistance = 0.0f;
     time_t tval = 0;
     bool read = false;
+    bool valid = false;
 };
 
 class Device : public ISensor {

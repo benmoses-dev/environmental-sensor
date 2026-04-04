@@ -54,9 +54,15 @@ ISensor *sensors[] = {
 #endif
 };
 
-const bool INITIALISE_I2C = READ_BME280 || READ_BME680 || READ_SCD41;
-const std::uint32_t SLEEP_PERIOD_S = static_cast<std::uint32_t>(std::max(
-    static_cast<int>(MEASUREMENT_PERIOD_S) - static_cast<int>(WARMUP_TIME_S), 0));
+constexpr bool INITIALISE_I2C = READ_BME280 || READ_BME680 || READ_SCD41;
+
+constexpr std::uint32_t WARMUP_S =
+    READ_BME680 ? std::max(WARMUP_TIME_S,
+                           (BME680_HEATER_FREQ_MS / static_cast<std::uint32_t>(1000)) + 1)
+                : WARMUP_TIME_S;
+
+constexpr std::uint32_t SLEEP_PERIOD_S = static_cast<std::uint32_t>(
+    std::max(static_cast<int>(MEASUREMENT_PERIOD_S) - static_cast<int>(WARMUP_S), 0));
 
 void toJson(const Event &event, char *buf, const std::size_t size) {
     const std::int32_t n = snprintf(buf, size, "{\"time\":%lld,\"val\":%.2f}",
@@ -112,7 +118,7 @@ void readTask(void *pvParameters) {
     TickType_t last = xTaskGetTickCount();
     while (true) {
         takeReadings();
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(MAIN_LOOP_S));
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(MAIN_LOOP_MS));
     }
 }
 
@@ -250,7 +256,7 @@ extern "C" void app_main() {
 #if DEBUG
     ESP_LOGI(TAG, "Periodic mode - waiting until end of measurement period...");
 #endif
-    xTaskDelayUntil(&start, pdMS_TO_TICKS(WARMUP_TIME_S * 1000UL));
+    xTaskDelayUntil(&start, pdMS_TO_TICKS(WARMUP_S * 1000UL));
     takeReadings();
     shutdownSensors();
     publishReadings(0);

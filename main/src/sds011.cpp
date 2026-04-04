@@ -119,9 +119,7 @@ bool Device::wake() {
 #endif
         return false;
     }
-#if DEBUG
     ESP_LOGI(TAG, "Set SDS011 to active mode.");
-#endif
     return true;
 }
 
@@ -159,9 +157,7 @@ bool Device::sleep() {
 #endif
         return false;
     }
-#if DEBUG
     ESP_LOGI(TAG, "Set SDS011 to sleeping state.");
-#endif
     taskENTER_CRITICAL(&readingMux);
     reading = {};
     reading.valid = false;
@@ -183,8 +179,10 @@ void Device::logReadings(QueueHandle_t q) {
     res = reading;
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
-    if (res.read) {
-        ESP_LOGW(TAG, "Reading has already been read...");
+    if (res.read || !res.valid) {
+#if DEBUG
+        ESP_LOGW(TAG, "Reading has already been read or is invalid...");
+#endif
         return;
     }
     const Event pm2_5Event = {res.pm2_5, res.t, EventType::PM2_5};
@@ -250,7 +248,9 @@ bool Device::readResponse(std::uint8_t (&resp)[SDS_RESPONSE_LENGTH], TickType_t 
     resp[0] = byte;
     len = uart_read_bytes(port, resp + 1, SDS_RESPONSE_LENGTH - 1, timeout);
     if (len != SDS_RESPONSE_LENGTH - 1) {
+#if DEBUG
         ESP_LOGW(TAG, "Incorrect number of bytes read from uart");
+#endif
         return false;
     }
     std::uint8_t checksum = 0;
@@ -258,7 +258,9 @@ bool Device::readResponse(std::uint8_t (&resp)[SDS_RESPONSE_LENGTH], TickType_t 
         checksum += resp[i];
     }
     if (checksum != resp[8]) {
+#if DEBUG
         ESP_LOGW(TAG, "Incorrect checksum");
+#endif
         return false;
     }
     return true;
@@ -271,7 +273,9 @@ void Device::parseFrame(const std::uint8_t frame[SDS_RESPONSE_LENGTH], Reading &
     reading.t = 0;
     reading.read = false;
     if (frame[0] != 0xAA || frame[1] != 0xC0 || frame[9] != 0xAB) {
+#if DEBUG
         ESP_LOGW(TAG, "Incorrect frame format");
+#endif
         return;
     }
     reading.valid = true;

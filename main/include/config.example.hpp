@@ -26,7 +26,11 @@ inline constexpr std::int32_t I2C_MASTER_SCL_IO = 23;
 inline constexpr std::uint8_t BME280_ADDR = 0x76;
 inline constexpr std::uint8_t BME680_ADDR = 0x77;
 inline constexpr std::uint8_t BME680_CHIP_ID = 0x61;
-inline constexpr std::uint32_t BME680_HEATER_FREQ = 1000;
+/**
+ * How often the BME680 should take a reading, including a heater cycle.
+ * There is a trade-off between heater residual temperatures and measurement resolution.
+ */
+inline constexpr std::uint32_t BME680_HEATER_FREQ_MS = 60'000;
 inline constexpr std::uint8_t SCD41_ADDR = 0x62;
 
 inline constexpr uart_port_t UART_PORT = UART_NUM_2;
@@ -43,24 +47,29 @@ inline constexpr float GAS_ADJUST = 0.0;
  * Operating mode:
  * 0 = continuous
  * 1 or greater = periodic
+ * I would not recommend periodic mode for the BME680 gas heater as it needs to stabilise.
  */
-inline constexpr std::uint8_t OPERATING_MODE = 1;
+inline constexpr std::uint8_t OPERATING_MODE = 0;
 /**
  * Periodic mode only.
- * This is the time to wait for the BME680's heater and the SDS011's fan to stabilise.
- * I have found that at least 30 seconds is necessary, and 60 seconds is preferred.
+ * This is the time to wait for the sensors to stabilise.
+ * Typically, I have found that this is:
+ * 30 seconds for the SDS011 fan
+ * 5-10 seconds for the SCD41
+ * If using the BME680, this must be at least as long as the BME680_HEATER_FREQ_MS
+ * configuration above!
  */
-inline constexpr std::uint32_t WARMUP_TIME_S = 60;
+inline constexpr std::uint32_t WARMUP_TIME_S = 10;
 /**
  * Periodic mode only.
  * This is how long to wait between measurement publishing.
  * This must be at least as long as the warmup time.
- * Longer durations reduce power consumption.
+ * Longer durations greatly reduce power consumption.
  */
-inline constexpr std::uint32_t MEASUREMENT_PERIOD_S = 120;
+inline constexpr std::uint32_t MEASUREMENT_PERIOD_S = 300;
 /**
  * Continuous mode only.
  * This determines how long between reading/publishing in continuous mode.
  * Increasing this slightly reduces power consumption.
  */
-inline constexpr std::uint32_t MAIN_LOOP_S = 5000; // Continuous loop frequency
+inline constexpr std::uint32_t MAIN_LOOP_MS = 5'000; // Continuous loop frequency
