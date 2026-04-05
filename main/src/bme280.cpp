@@ -133,7 +133,7 @@ void Device::setSampling() const {
      * 100 = x8
      * 101 and above = x16
      */
-    const std::uint32_t temp = 5;
+    const std::uint32_t temp = 2;
     /**
      * pressure oversampling
      * 000 = skipped
@@ -143,7 +143,7 @@ void Device::setSampling() const {
      * 100 = x8
      * 101 and above = x16
      */
-    const std::uint32_t pres = 5;
+    const std::uint32_t pres = 3;
     /**
      * device mode
      * 00       = sleep
@@ -161,7 +161,7 @@ void Device::setSampling() const {
      * 100 = x8
      * 101 and above = x16
      */
-    const std::uint32_t humReg = 5;
+    const std::uint32_t humReg = 2;
     /**
      * filter settings
      * 000 = filter off
@@ -182,7 +182,7 @@ void Device::setSampling() const {
      * 110 = 10 ms
      * 111 = 20 ms
      */
-    const std::uint32_t dur = 0;
+    const std::uint32_t dur = 5;
     const std::uint32_t configReg = (dur << 5) | (filter << 2) | 0;
     write8(REG_CTRL, measReg & ~0x03); // Mode sleep
     write8(REG_CTRL_HUM, humReg);

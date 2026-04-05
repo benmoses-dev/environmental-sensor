@@ -52,6 +52,7 @@ inline constexpr std::uint32_t BME680_HEATER_FREQ_MS = 60'000;
  * SCD41 configuration.
  */
 inline constexpr std::uint8_t SCD41_ADDR = 0x62;
+inline constexpr std::uint32_t SCD41_SINGLE_SHOT_FREQ_MS = 5'000; // Must be >= 5'000
 
 /**
  * UART configuration.

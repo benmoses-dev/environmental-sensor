@@ -1,17 +1,23 @@
 #include "scd41.hpp"
+#include "config.hpp"
 #include "esp_log.h"
 #include "events.hpp"
 #include "utils.hpp"
+#include <algorithm>
 
 namespace SCD41 {
 
 static const char *TAG = "SCD41";
-static constexpr std::uint16_t CMD_START_PERIODIC_MEASUREMENT = 0x21B1;
-static constexpr std::uint16_t CMD_STOP_PERIODIC_MEASUREMENT = 0x3F86;
-static constexpr std::uint16_t CMD_READ_MEASUREMENT = 0xEC05;
-static constexpr std::uint16_t CMD_GET_DATA_READY_STATUS = 0xE4B8;
+
+constexpr std::uint32_t SINGLE_SHOT_FREQ_MS =
+    std::max(SCD41_SINGLE_SHOT_FREQ_MS, static_cast<std::uint32_t>(5'000));
 
 #define DEBUG 0
+
+void scdTask(void *pvParameters) {
+    Device *scd = static_cast<Device *>(pvParameters);
+    scd->start();
+}
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), initialised(false) {}
@@ -19,20 +25,37 @@ Device::Device(const i2c_port_t port, const std::uint8_t addr)
 Device::~Device() {}
 
 bool Device::init() {
-    if (!stopPeriodicMeasurement()) {
-        ESP_LOGE(TAG, "Failed to stop periodic measurement");
+    if (!wake()) {
+        ESP_LOGE(TAG, "Failed to wake device!");
         return false;
     }
-    delay_ms(500);
-    if (!startPeriodicMeasurement()) {
-        ESP_LOGE(TAG, "Failed to start periodic measurement");
+    if (!stopPeriodicMeasurement()) {
+        ESP_LOGE(TAG, "Failed to stop periodic measurement");
         return false;
     }
     ESP_LOGI(TAG, "SCD41 initialised successfully!");
     taskENTER_CRITICAL(&initMux);
     initialised = true;
     taskEXIT_CRITICAL(&initMux);
+    xTaskCreate(scdTask, "SCDTask", 4096, this, 5, NULL);
     return true;
+}
+
+void Device::start() {
+    while (true) {
+        TickType_t last = xTaskGetTickCount();
+        if (!isInitialised()) {
+            ESP_LOGI(TAG, "SCD41 read-loop task stopping...");
+            vTaskDelete(NULL);
+            return;
+        }
+        const bool res = singleShot();
+        if (!res) {
+            ESP_LOGE(TAG, "Failed to start single shot!");
+            continue;
+        }
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(SINGLE_SHOT_FREQ_MS - 5'000));
+    }
 }
 
 bool Device::isInitialised() {
@@ -43,21 +66,89 @@ bool Device::isInitialised() {
     return res;
 }
 
-bool Device::startPeriodicMeasurement() {
-    return write16(CMD_START_PERIODIC_MEASUREMENT);
-}
-
-bool Device::stopPeriodicMeasurement() { return write16(CMD_STOP_PERIODIC_MEASUREMENT); }
-
 bool Device::sleep() {
+    taskENTER_CRITICAL(&initMux);
+    initialised = false;
+    taskEXIT_CRITICAL(&initMux);
+    // Todo: may need to either wait here or stop the periodic task.
     const bool stopped = stopPeriodicMeasurement();
     if (!stopped) {
         ESP_LOGE(TAG, "Could not stop device");
     }
-    taskENTER_CRITICAL(&initMux);
-    initialised = false;
-    taskEXIT_CRITICAL(&initMux);
-    return stopped;
+    const bool res = powerDown();
+    if (!res) {
+        ESP_LOGE(TAG, "Could not sleep device");
+    }
+    return stopped && res;
+}
+
+void Device::logReadings(QueueHandle_t q) {
+    const bool ready = isDataReady();
+    if (!ready) {
+        ESP_LOGI(TAG, "Data not ready yet");
+        return;
+    }
+    ESP_LOGI(TAG, "Reading data");
+    std::uint8_t raw[9];
+    if (!readMeasurement(raw)) {
+        ESP_LOGE(TAG, "Failed to read SCD41");
+        return;
+    }
+    const std::uint16_t co2Raw = (raw[0] << 8) | raw[1];
+    const std::uint16_t tempRaw = (raw[3] << 8) | raw[4];
+    const std::uint16_t humRaw = (raw[6] << 8) | raw[7];
+    const float tempNorm = static_cast<float>(tempRaw) / 65535.0f; // 2^16 - 1
+    const float temperature = (175.0 * tempNorm) - 45.0;           // -45...130
+    const float humNorm = static_cast<float>(humRaw) / 65535.0f;
+    const float humidity = 100.0 * humNorm; // 0..1 -> 0..100
+    const float co2PPM = static_cast<float>(co2Raw);
+    ESP_LOGI(TAG, "Temp: %.2f °C, Hum: %.2f %%", temperature, humidity);
+    const Event co2Event = {co2PPM, time(NULL), EventType::CO2};
+    xQueueSend(q, &co2Event, portMAX_DELAY);
+}
+
+bool Device::startPeriodicMeasurement() {
+    return write16(CMD_START_PERIODIC_MEASUREMENT);
+}
+
+bool Device::startLowPowerPeriodicMeasurement() {
+    return write16(CMD_START_LP_PERIODIC_MEASUREMENT);
+}
+
+bool Device::singleShot() {
+    const bool res = write16(CMD_MEASURE_SH);
+    if (!res) {
+        return false;
+    }
+    delay_ms(5'000);
+    return true;
+}
+
+bool Device::singleShotRHT() {
+    const bool res = write16(CMD_MEASURE_SH_RHT);
+    if (!res) {
+        return false;
+    }
+    delay_ms(50);
+    return true;
+}
+
+bool Device::stopPeriodicMeasurement() {
+    const bool res = write16(CMD_STOP_PERIODIC_MEASUREMENT);
+    delay_ms(500);
+    return res;
+}
+
+bool Device::powerDown() {
+    const bool res = write16(CMD_POWER_DOWN);
+    delay_ms(1);
+    return res;
+}
+
+bool Device::wake() {
+    const bool res = write16(CMD_WAKE_UP);
+    delay_ms(30);
+    return res;
 }
 
 bool Device::readBytes(std::uint8_t *buffer, std::size_t len) {
@@ -102,31 +193,6 @@ bool Device::isDataReady() {
     }
     const std::uint16_t status = (raw[0] << 8) | raw[1];
     return (status & 0x07FF) != 0; // lower 11 bits non-zero
-}
-
-void Device::logReadings(QueueHandle_t q) {
-    const bool ready = isDataReady();
-    if (!ready) {
-        ESP_LOGI(TAG, "Data not ready yet");
-        return;
-    }
-    ESP_LOGI(TAG, "Reading data");
-    std::uint8_t raw[9];
-    if (!readMeasurement(raw)) {
-        ESP_LOGE(TAG, "Failed to read SCD41");
-        return;
-    }
-    const std::uint16_t co2Raw = (raw[0] << 8) | raw[1];
-    const std::uint16_t tempRaw = (raw[3] << 8) | raw[4];
-    const std::uint16_t humRaw = (raw[6] << 8) | raw[7];
-    const float tempNorm = static_cast<float>(tempRaw) / 65535.0f; // 2^16 - 1
-    const float temperature = (175.0 * tempNorm) - 45.0;           // -45...130
-    const float humNorm = static_cast<float>(humRaw) / 65535.0f;
-    const float humidity = 100.0 * humNorm; // 0..1 -> 0..100
-    const float co2PPM = static_cast<float>(co2Raw);
-    ESP_LOGI(TAG, "Temp: %.2f °C, Hum: %.2f %%", temperature, humidity);
-    const Event co2Event = {co2PPM, time(NULL), EventType::CO2};
-    xQueueSend(q, &co2Event, portMAX_DELAY);
 }
 
 std::uint8_t Device::getCRC8(const std::uint8_t *data) {
