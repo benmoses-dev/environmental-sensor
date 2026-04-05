@@ -56,13 +56,11 @@ ISensor *sensors[] = {
 
 constexpr bool INITIALISE_I2C = READ_BME280 || READ_BME680 || READ_SCD41;
 
-constexpr std::uint32_t WARMUP_S =
-    READ_BME680 ? std::max(WARMUP_TIME_S,
-                           (BME680_HEATER_FREQ_MS / static_cast<std::uint32_t>(1000)) + 1)
-                : WARMUP_TIME_S;
+constexpr std::uint32_t WARMUP_MS =
+    READ_BME680 ? std::max(WARMUP_TIME_MS, BME680_HEATER_FREQ_MS) : WARMUP_TIME_MS;
 
-constexpr std::uint32_t SLEEP_PERIOD_S = static_cast<std::uint32_t>(
-    std::max(static_cast<int>(MEASUREMENT_PERIOD_S) - static_cast<int>(WARMUP_S), 0));
+constexpr std::uint32_t SLEEP_PERIOD_MS = static_cast<std::uint32_t>(
+    std::max(static_cast<int>(MEASUREMENT_PERIOD_MS) - static_cast<int>(WARMUP_MS), 0));
 
 void toJson(const Event &event, char *buf, const std::size_t size) {
     const std::int32_t n = snprintf(buf, size, "{\"time\":%lld,\"val\":%.2f}",
@@ -75,12 +73,12 @@ void toJson(const Event &event, char *buf, const std::size_t size) {
 }
 
 void goToSleep() {
-    if (OPERATING_MODE > 0 && SLEEP_PERIOD_S > 0) {
+    if (OPERATING_MODE > 0 && SLEEP_PERIOD_MS > 0) {
 #if DEBUG
         ESP_LOGI(TAG, "Entering deep sleep...");
 #endif
         const std::uint64_t sleepDur =
-            static_cast<std::uint64_t>(SLEEP_PERIOD_S) * 1'000'000ULL;
+            static_cast<std::uint64_t>(SLEEP_PERIOD_MS) * 1'000ULL;
         esp_sleep_enable_timer_wakeup(sleepDur);
         esp_deep_sleep_start();
     }
@@ -256,7 +254,7 @@ extern "C" void app_main() {
 #if DEBUG
     ESP_LOGI(TAG, "Periodic mode - waiting until end of measurement period...");
 #endif
-    xTaskDelayUntil(&start, pdMS_TO_TICKS(WARMUP_S * 1000UL));
+    xTaskDelayUntil(&start, pdMS_TO_TICKS(WARMUP_MS));
     takeReadings();
     shutdownSensors();
     publishReadings(0);
