@@ -14,6 +14,8 @@
 #include "utils.hpp"
 #include "wifi.hpp"
 #include <algorithm>
+#include <iterator>
+#include <limits>
 
 static const char *TAG = "MAIN";
 
@@ -54,20 +56,50 @@ ISensor *sensors[] = {
 #endif
 };
 
+constexpr std::size_t SENSOR_COUNT = std::size(sensors);
+
 constexpr bool INITIALISE_I2C = READ_BME280 || READ_BME680 || READ_SCD41;
 
-constexpr std::uint32_t getWarmupTime() {
-    // Todo: calculate from initTime + dataReadyTime for each sensor.
-    constexpr std::uint32_t initTime = 0;
-    constexpr std::uint32_t dataReadyTime = 0;
-    return 20'000;
-    // return READ_BME680 ? std::max(WARMUP_TIME_MS, BME680_HEATER_FREQ_MS) : WARMUP_TIME_MS;
+constexpr std::uint32_t WIFI_CONNECT_TIME_MS = 10'000;
+
+std::uint32_t getWarmupTime() {
+    for (std::size_t i = 0; i < SENSOR_COUNT; ++i) {
+        for (std::size_t j = i + 1; j < SENSOR_COUNT; ++j) {
+            if (sensors[j]->getDataReadyTime() > sensors[i]->getDataReadyTime()) {
+                ISensor *tmp = sensors[i];
+                sensors[i] = sensors[j];
+                sensors[j] = tmp;
+            }
+        }
+    }
+    std::uint32_t warmupTime = 0;
+    std::uint32_t initSoFar = 0;
+    for (ISensor *s : sensors) {
+        const std::uint32_t at = s->getInitTime() + s->getDataReadyTime();
+        warmupTime = std::max(warmupTime, at + initSoFar);
+        initSoFar += s->getInitTime();
+    }
+    ESP_LOGI(TAG, "Warmup time: %u", warmupTime);
+    return warmupTime;
 }
 
-constexpr std::uint32_t WARMUP_MS = getWarmupTime();
+std::uint32_t getMainLoopTime() {
+    std::uint32_t mainLoopTime = std::numeric_limits<std::uint32_t>::max();
+    for (ISensor *s : sensors) {
+        mainLoopTime = std::min(mainLoopTime, s->getLoopTime());
+    }
+    ESP_LOGI(TAG, "Main loop time: %u", mainLoopTime);
+    return mainLoopTime;
+}
 
-constexpr std::uint32_t SLEEP_PERIOD_MS = static_cast<std::uint32_t>(
-    std::max(static_cast<int>(MEASUREMENT_PERIOD_MS) - static_cast<int>(WARMUP_MS), 0));
+std::uint32_t MAIN_LOOP_MS = getMainLoopTime();
+
+std::uint32_t WARMUP_MS = getWarmupTime();
+
+std::uint32_t SLEEP_PERIOD_MS = static_cast<std::uint32_t>(
+    std::max(static_cast<int>(MEASUREMENT_PERIOD_MS) - static_cast<int>(WARMUP_MS) -
+                 static_cast<int>(WIFI_CONNECT_TIME_MS),
+             0));
 
 void toJson(const Event &event, char *buf, const std::size_t size) {
     const std::int32_t n = snprintf(buf, size, "{\"time\":%lld,\"val\":%.2f}",
@@ -205,7 +237,10 @@ void logTask(void *pvParameters) {
 }
 
 extern "C" void app_main() {
-    TickType_t start = xTaskGetTickCount();
+    TickType_t startMain = xTaskGetTickCount();
+#if DEBUG
+    const auto sTime = millis();
+#endif
     if (!wifi.init()) {
 #if DEBUG
         ESP_LOGE(TAG, "WiFi initialisation failed, exiting...");
@@ -230,6 +265,13 @@ extern "C" void app_main() {
 #endif
         goToSleep();
     }
+#if DEBUG
+    const auto eTime = millis();
+    const auto wifiTime = eTime - sTime;
+    ESP_LOGI(TAG, "WiFi time: %u", wifiTime);
+#endif
+    xTaskDelayUntil(&startMain, pdMS_TO_TICKS(WIFI_CONNECT_TIME_MS));
+    TickType_t startInit = xTaskGetTickCount();
     std::uint32_t count = 0;
     for (ISensor *s : sensors) {
         if (!s->init()) {
@@ -249,6 +291,7 @@ extern "C" void app_main() {
 #if DEBUG
     ESP_LOGI(TAG, "Initialised %d Sensors...", count);
 #endif
+    xTaskDelayUntil(&startInit, pdMS_TO_TICKS(WARMUP_MS));
     eventQueue = xQueueCreate(1000, sizeof(Event));
     if (OPERATING_MODE == 0) { // Continuous
 #if DEBUG
@@ -261,7 +304,6 @@ extern "C" void app_main() {
 #if DEBUG
     ESP_LOGI(TAG, "Periodic mode - waiting until end of measurement period...");
 #endif
-    xTaskDelayUntil(&start, pdMS_TO_TICKS(WARMUP_MS));
     takeReadings();
     shutdownSensors();
     publishReadings(0);

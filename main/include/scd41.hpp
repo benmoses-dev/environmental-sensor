@@ -24,8 +24,9 @@ class Device : public ISensor {
     ~Device();
 
     bool init() override;
-    std::uint32_t getInitTime() override { return 550; };
-    std::uint32_t getDataReadyTime() override { return 11'000; };
+    std::uint32_t getInitTime() override { return 530; };
+    std::uint32_t getDataReadyTime() override { return SCD41_SINGLE_SHOT_FREQ_MS * 2; };
+    std::uint32_t getLoopTime() override { return SCD41_SINGLE_SHOT_FREQ_MS; };
     void start();
     bool isInitialised() override;
     bool sleep() override;

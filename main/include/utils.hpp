@@ -8,7 +8,12 @@
 #include "freertos/FreeRTOS.h"
 #include <cstdint>
 
-inline void delay_ms(std::uint32_t ms) { vTaskDelay(ms / portTICK_PERIOD_MS); }
+inline void delay_ms(std::uint32_t ms) {
+    if (ms == 0) {
+        return;
+    }
+    vTaskDelay(ms / portTICK_PERIOD_MS);
+}
 
 inline void delay_us(std::uint32_t us, void *interface) { esp_rom_delay_us(us); }
 

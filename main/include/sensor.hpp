@@ -12,4 +12,5 @@ struct ISensor {
     virtual bool isInitialised() = 0;
     virtual std::uint32_t getInitTime() = 0;
     virtual std::uint32_t getDataReadyTime() = 0;
+    virtual std::uint32_t getLoopTime() = 0;
 };

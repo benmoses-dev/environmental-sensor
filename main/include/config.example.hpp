@@ -36,6 +36,7 @@ inline constexpr std::int32_t I2C_MASTER_SCL_IO = 23;
  * BME280 configuration.
  */
 inline constexpr std::uint8_t BME280_ADDR = 0x76;
+inline constexpr std::uint32_t BME280_READ_FREQ_MS = 1'000;
 
 /**
  * BME680 configuration.
@@ -55,12 +56,13 @@ inline constexpr std::uint8_t SCD41_ADDR = 0x62;
 inline constexpr std::uint32_t SCD41_SINGLE_SHOT_FREQ_MS = 5'010; // Must be >= 5'010
 
 /**
- * UART configuration.
+ * UART/SDS011 configuration.
  */
 inline constexpr uart_port_t UART_PORT = UART_NUM_2;
 inline constexpr std::uint8_t TX_PIN = 19;
 inline constexpr std::uint8_t RX_PIN = 18;
 inline constexpr std::uint32_t UART_BUF_SIZE = 256;
+inline constexpr std::uint32_t SDS011_READING_FREQ_MS = 1'000;
 
 /**
  * Sensor adjustments.
@@ -88,9 +90,3 @@ inline constexpr std::uint8_t OPERATING_MODE = 0;
  * Longer durations greatly reduce power consumption.
  */
 inline constexpr std::uint32_t MEASUREMENT_PERIOD_MS = 300'000;
-/**
- * Continuous mode only.
- * This determines how long between reading/publishing in continuous mode.
- * Increasing this slightly reduces power consumption.
- */
-inline constexpr std::uint32_t MAIN_LOOP_MS = 5'000; // Continuous loop frequency

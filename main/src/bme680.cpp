@@ -1,5 +1,6 @@
 #include "bme680.hpp"
 #include "bme68x.h"
+#include "config.hpp"
 #include "driver/i2c.h"
 #include "esp_log.h"
 #include "events.hpp"
@@ -117,8 +118,10 @@ bool Device::init() {
 }
 
 void Device::start() {
+    TickType_t last = xTaskGetTickCount();
     while (true) {
-        TickType_t last = xTaskGetTickCount();
+        const auto diff = BME680_HEATER_FREQ_MS < 500 ? 0 : BME680_HEATER_FREQ_MS - 500;
+        delay_ms(diff);
 #if DEBUG
         const auto sTime = millis();
 #endif

@@ -55,8 +55,10 @@ bool Device::init() {
 }
 
 void Device::start() {
+    TickType_t last = xTaskGetTickCount();
     while (true) {
-        TickType_t last = xTaskGetTickCount();
+        const auto diff = SINGLE_SHOT_FREQ_MS - 5010;
+        delay_ms(diff);
 #if DEBUG
         const auto sTime = millis();
 #endif
@@ -83,9 +85,7 @@ void Device::start() {
         const auto totalTime = eTime - sTime;
         ESP_LOGI(TAG, "Total loop time: %u", totalTime);
 #endif
-        if constexpr (OPERATING_MODE == 0) {
-            vTaskDelayUntil(&last, pdMS_TO_TICKS(SINGLE_SHOT_FREQ_MS));
-        }
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(SINGLE_SHOT_FREQ_MS));
     }
 }
 

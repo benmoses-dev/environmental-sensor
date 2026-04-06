@@ -26,6 +26,7 @@ class Device : public ISensor {
     bool init() override;
     std::uint32_t getInitTime() override { return 500; };
     std::uint32_t getDataReadyTime() override { return 30'000; };
+    std::uint32_t getLoopTime() override { return SDS011_READING_FREQ_MS; }; // Todo: forced loop.
     void logReadings(QueueHandle_t q) override;
     void start();
     bool sleep() override;
