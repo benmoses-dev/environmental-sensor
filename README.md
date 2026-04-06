@@ -1,31 +1,15 @@
 # Environmental Sensor
 
-An ESP32-based environmental monitoring device that measures **temperature, humidity, and pressure** using a BME280 sensor and publishes readings to an MQTT broker over TLS.
+An ESP32-based indoor environmental monitoring system that measures and publishes readings to an MQTT broker.
 
 ## Features
 
-- BME280 environmental sensor
-- Temperature, humidity, and pressure readings
-- WiFi connectivity
-- MQTT publishing
-- ESP‑IDF based firmware
-- Modular sensor driver implementation
+- BME280, BME680, SCD41, and SDS011 support
+- Temperature, humidity, pressure, CO2, VOC, PM2.5, and PM10 readings
+- WiFi connectivity and MQTT publishing
+- Modular sensor driver implementation with multiple configurations
 
-The device periodically samples environmental data and sends it to an MQTT broker for logging, monitoring, or home‑automation integration.
-
-## Architecture
-
-Sensor -> ESP32 -> MQTT (TLS) -> Broker
-
-The ESP32 reads sensor data via I2C, formats the measurements and applies calibration, and publishes them to a configured MQTT topic.
-
-## Hardware
-
-Required components:
-
-- ESP32 development board
-- BME280 environmental sensor (I2C)
-- Breadboard / wiring
+The device periodically samples environmental data and sends it to an MQTT broker for logging or monitoring.
 
 Typical wiring:
 
@@ -57,13 +41,9 @@ device/1/temperature
 
 ## Configuration
 
-WiFi and MQTT settings are configured through include/config.h
-
 ```
-cp include/config.example.h include/config.h
+cp include/config.example.hpp include/config.hpp
 ```
-
-TLS certificates can also be configured if required by the broker, but I currently use LetsEncrypt on the server (global CA).
 
 ## Build
 
@@ -85,10 +65,3 @@ Flash to the ESP32:
 ```bash
 idf.py -p PORT flash monitor
 ```
-
-## Use Cases
-
-- Home automation sensors
-- Environmental monitoring
-- MQTT telemetry testing
-
