@@ -96,13 +96,13 @@ bool Device::init() {
 #endif
         return false;
     }
-    //     res = bme68x_set_op_mode(BME68X_FORCED_MODE, &gas_sensor);
-    //     if (res != BME68X_OK) {
-    // #if DEBUG
-    //         ESP_LOGE(TAG, "Failed to set operating mode!");
-    // #endif
-    //         return false;
-    //     }
+    res = performReading();
+    if (!res) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to perform initial reading!");
+#endif
+        return false;
+    }
     ESP_LOGI(TAG, "BME680 configured successfully!");
     taskENTER_CRITICAL(&initMux);
     initialised = true;
@@ -120,7 +120,7 @@ bool Device::init() {
 void Device::start() {
     TickType_t last = xTaskGetTickCount();
     while (true) {
-        const auto diff = BME680_HEATER_FREQ_MS < 500 ? 0 : BME680_HEATER_FREQ_MS - 500;
+        const auto diff = BME680_HEATER_FREQ_MS < 300 ? 0 : BME680_HEATER_FREQ_MS - 300;
         delay_ms(diff);
 #if DEBUG
         const auto sTime = millis();
@@ -230,11 +230,8 @@ bool Device::performReading() {
         return false;
     }
     const std::int32_t remaining = remainingReadingMillis();
-#if DEBUG
-    ESP_LOGI(TAG, "remaining millis: %d", remaining);
-#endif
     if (remaining > 0) {
-        delay_ms(static_cast<std::uint32_t>(remaining) + 5);
+        delay_ms(static_cast<std::uint32_t>(remaining) + 1'000);
     }
     measStart = 0;
     measDur = 0;

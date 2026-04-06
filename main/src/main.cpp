@@ -79,7 +79,9 @@ std::uint32_t getWarmupTime() {
         warmupTime = std::max(warmupTime, at + initSoFar);
         initSoFar += s->getInitTime();
     }
+#if DEBUG
     ESP_LOGI(TAG, "Warmup time: %u", warmupTime);
+#endif
     return warmupTime;
 }
 
@@ -88,7 +90,9 @@ std::uint32_t getMainLoopTime() {
     for (ISensor *s : sensors) {
         mainLoopTime = std::min(mainLoopTime, s->getLoopTime());
     }
+#if DEBUG
     ESP_LOGI(TAG, "Main loop time: %u", mainLoopTime);
+#endif
     return mainLoopTime;
 }
 
@@ -114,7 +118,7 @@ void toJson(const Event &event, char *buf, const std::size_t size) {
 void goToSleep() {
     if (OPERATING_MODE > 0 && SLEEP_PERIOD_MS > 0) {
 #if DEBUG
-        ESP_LOGI(TAG, "Entering deep sleep...");
+        ESP_LOGI(TAG, "Entering deep sleep for %u ms...", SLEEP_PERIOD_MS);
 #endif
         const std::uint64_t sleepDur =
             static_cast<std::uint64_t>(SLEEP_PERIOD_MS) * 1'000ULL;

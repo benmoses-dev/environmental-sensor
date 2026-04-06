@@ -29,8 +29,8 @@ class Device : public ISensor {
     ~Device();
 
     bool init() override;
-    std::uint32_t getInitTime() override { return 500; };
-    std::uint32_t getDataReadyTime() override { return BME680_HEATER_FREQ_MS; };
+    std::uint32_t getInitTime() override { return 1'300; };
+    std::uint32_t getDataReadyTime() override { return getInitTime(); };
     std::uint32_t getLoopTime() override { return BME680_HEATER_FREQ_MS; };
     void logReadings(QueueHandle_t q) override;
     bool sleep() override;

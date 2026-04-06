@@ -57,7 +57,9 @@ bool Device::init() {
     const auto startTime = millis();
 #endif
     if (read8(REG_ID) != 0x60) {
+#if DEBUG
         ESP_LOGE(TAG, "Wrong BME280 ID!");
+#endif
         return false;
     }
     write8(REG_RESET, 0xB6);
