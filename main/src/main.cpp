@@ -56,8 +56,15 @@ ISensor *sensors[] = {
 
 constexpr bool INITIALISE_I2C = READ_BME280 || READ_BME680 || READ_SCD41;
 
-constexpr std::uint32_t WARMUP_MS =
-    READ_BME680 ? std::max(WARMUP_TIME_MS, BME680_HEATER_FREQ_MS) : WARMUP_TIME_MS;
+constexpr std::uint32_t getWarmupTime() {
+    // Todo: calculate from initTime + dataReadyTime for each sensor.
+    constexpr std::uint32_t initTime = 0;
+    constexpr std::uint32_t dataReadyTime = 0;
+    return 20'000;
+    // return READ_BME680 ? std::max(WARMUP_TIME_MS, BME680_HEATER_FREQ_MS) : WARMUP_TIME_MS;
+}
+
+constexpr std::uint32_t WARMUP_MS = getWarmupTime();
 
 constexpr std::uint32_t SLEEP_PERIOD_MS = static_cast<std::uint32_t>(
     std::max(static_cast<int>(MEASUREMENT_PERIOD_MS) - static_cast<int>(WARMUP_MS), 0));

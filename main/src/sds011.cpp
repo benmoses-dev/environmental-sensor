@@ -23,6 +23,10 @@ void sdsTask(void *pvParameters) {
 }
 
 bool Device::init() {
+    TickType_t startInit = xTaskGetTickCount();
+#if DEBUG
+    const auto startTime = millis();
+#endif
     uart_config_t uartConfig = {};
     uartConfig.baud_rate = 9600;
     uartConfig.data_bits = UART_DATA_8_BITS;
@@ -60,6 +64,12 @@ bool Device::init() {
     taskENTER_CRITICAL(&initMux);
     initialised = true;
     taskEXIT_CRITICAL(&initMux);
+#if DEBUG
+    const auto endTime = millis();
+    const auto totalTime = endTime - startTime;
+    ESP_LOGI(TAG, "Init took: %u", totalTime);
+#endif
+    vTaskDelayUntil(&startInit, pdMS_TO_TICKS(getInitTime()));
     xTaskCreate(sdsTask, "SDSTask", 4096, this, 5, NULL);
     return true;
 }
@@ -220,6 +230,10 @@ bool Device::sendCommand(const std::uint8_t (&frame)[SDS_FRAME_LENGTH]) {
 void Device::start() {
     std::uint8_t frame[SDS_RESPONSE_LENGTH];
     uart_flush_input(port);
+#if DEBUG
+    const auto sTime = millis();
+    std::uint32_t count = 0;
+#endif
     while (true) {
         if (!isInitialised()) {
             ESP_LOGI(TAG, "SDS011 read-loop task stopping...");
@@ -235,6 +249,13 @@ void Device::start() {
             taskENTER_CRITICAL(&readingMux);
             reading = res;
             taskEXIT_CRITICAL(&readingMux);
+#if DEBUG
+            count++;
+            const auto eTime = millis();
+            const auto totalTime = eTime - sTime;
+            ESP_LOGI(TAG, "Total loop time: %u", totalTime);
+            ESP_LOGI(TAG, "Total loop count: %u", count);
+#endif
         }
     }
 }

@@ -44,7 +44,7 @@ namespace BME280 {
 
 static const char *TAG = "BME280";
 
-#define DEBUG 0
+#define DEBUG 1
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), initialised(false) {}
@@ -52,6 +52,10 @@ Device::Device(const i2c_port_t port, const std::uint8_t addr)
 Device::~Device() {}
 
 bool Device::init() {
+    TickType_t startInit = xTaskGetTickCount();
+#if DEBUG
+    const auto startTime = millis();
+#endif
     if (read8(REG_ID) != 0x60) {
         ESP_LOGE(TAG, "Wrong BME280 ID!");
         return false;
@@ -68,6 +72,12 @@ bool Device::init() {
     taskENTER_CRITICAL(&initMux);
     initialised = true;
     taskEXIT_CRITICAL(&initMux);
+#if DEBUG
+    const auto endTime = millis();
+    const auto totalTime = endTime - startTime;
+    ESP_LOGI(TAG, "Init took: %u", totalTime);
+#endif
+    vTaskDelayUntil(&startInit, pdMS_TO_TICKS(getInitTime()));
     return true;
 }
 

@@ -13,7 +13,7 @@ namespace BME680 {
 
 static const char *TAG = "BME680";
 
-#define DEBUG 0
+#define DEBUG 1
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), measStart(0), measDur(0), initialised(false) {}
@@ -26,7 +26,9 @@ void bme680Task(void *pvParameters) {
 }
 
 bool Device::init() {
+    TickType_t startInit = xTaskGetTickCount();
 #if DEBUG
+    const auto startTime = millis();
     ESP_LOGI(TAG, "Initialising BME680...");
     ESP_LOGI(TAG, "Starting gas sensor...");
 #endif
@@ -93,17 +95,23 @@ bool Device::init() {
 #endif
         return false;
     }
-    res = bme68x_set_op_mode(BME68X_FORCED_MODE, &gas_sensor);
-    if (res != BME68X_OK) {
-#if DEBUG
-        ESP_LOGE(TAG, "Failed to set operating mode!");
-#endif
-        return false;
-    }
+    //     res = bme68x_set_op_mode(BME68X_FORCED_MODE, &gas_sensor);
+    //     if (res != BME68X_OK) {
+    // #if DEBUG
+    //         ESP_LOGE(TAG, "Failed to set operating mode!");
+    // #endif
+    //         return false;
+    //     }
     ESP_LOGI(TAG, "BME680 configured successfully!");
     taskENTER_CRITICAL(&initMux);
     initialised = true;
     taskEXIT_CRITICAL(&initMux);
+#if DEBUG
+    const auto endTime = millis();
+    const auto totalTime = endTime - startTime;
+    ESP_LOGI(TAG, "Init took: %u", totalTime);
+#endif
+    vTaskDelayUntil(&startInit, pdMS_TO_TICKS(getInitTime()));
     xTaskCreate(bme680Task, "BME680Task", 4096, this, 5, NULL);
     return true;
 }
@@ -111,6 +119,9 @@ bool Device::init() {
 void Device::start() {
     while (true) {
         TickType_t last = xTaskGetTickCount();
+#if DEBUG
+        const auto sTime = millis();
+#endif
         if (!isInitialised()) {
 #if DEBUG
             ESP_LOGI(TAG, "BME680 read-loop task stopping...");
@@ -123,6 +134,11 @@ void Device::start() {
             ESP_LOGW(TAG, "Failed to take reading in read-loop!");
 #endif
         }
+#if DEBUG
+        const auto eTime = millis();
+        const auto totalTime = eTime - sTime;
+        ESP_LOGI(TAG, "Total loop time: %u", totalTime);
+#endif
         vTaskDelayUntil(&last, pdMS_TO_TICKS(BME680_HEATER_FREQ_MS));
     }
 }

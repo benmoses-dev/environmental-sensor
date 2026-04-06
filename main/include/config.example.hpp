@@ -52,7 +52,7 @@ inline constexpr std::uint32_t BME680_HEATER_FREQ_MS = 60'000;
  * SCD41 configuration.
  */
 inline constexpr std::uint8_t SCD41_ADDR = 0x62;
-inline constexpr std::uint32_t SCD41_SINGLE_SHOT_FREQ_MS = 5'000; // Must be >= 5'000
+inline constexpr std::uint32_t SCD41_SINGLE_SHOT_FREQ_MS = 5'010; // Must be >= 5'010
 
 /**
  * UART configuration.
@@ -81,16 +81,6 @@ inline constexpr float GAS_ADJUST = 0.0;
  * I would not recommend periodic mode for the BME680 gas heater as it needs to stabilise.
  */
 inline constexpr std::uint8_t OPERATING_MODE = 0;
-/**
- * Periodic mode only.
- * This is the time to wait for the sensors to stabilise.
- * Typically, I have found that this is:
- * 30 seconds for the SDS011 fan
- * 5-10 seconds for the SCD41
- * If using the BME680, this must be at least as long as the BME680_HEATER_FREQ_MS
- * configuration above!
- */
-inline constexpr std::uint32_t WARMUP_TIME_MS = 10'000;
 /**
  * Periodic mode only.
  * This is how long to wait between measurement publishing.

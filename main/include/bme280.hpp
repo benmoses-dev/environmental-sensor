@@ -16,6 +16,8 @@ class Device : public ISensor {
     ~Device();
 
     bool init() override;
+    std::uint32_t getInitTime() override { return 200; };
+    std::uint32_t getDataReadyTime() override { return 1000; };
     void logReadings(QueueHandle_t q) override;
     bool sleep() override;
     bool isInitialised() override;

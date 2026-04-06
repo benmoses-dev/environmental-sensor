@@ -4,8 +4,18 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "sensor.hpp"
+#include <ctime>
 
 namespace SCD41 {
+
+struct Reading {
+    float co2 = 0.0f;
+    float temp = 0.0f;
+    float hum = 0.0f;
+    time_t t = 0;
+    bool valid = false;
+    bool read = false;
+};
 
 class Device : public ISensor {
   public:
@@ -14,6 +24,8 @@ class Device : public ISensor {
     ~Device();
 
     bool init() override;
+    std::uint32_t getInitTime() override { return 550; };
+    std::uint32_t getDataReadyTime() override { return 11'000; };
     void start();
     bool isInitialised() override;
     bool sleep() override;
@@ -22,9 +34,12 @@ class Device : public ISensor {
   private:
     const i2c_port_t i2c_port;
     const std::uint8_t i2c_addr;
+    Reading reading;
+    portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
     bool initialised;
     portMUX_TYPE initMux = portMUX_INITIALIZER_UNLOCKED;
 
+    bool getReading();
     bool startPeriodicMeasurement();
     bool startLowPowerPeriodicMeasurement();
     bool singleShot();
