@@ -4,6 +4,8 @@
 #include "esp_log.h"
 #include "events.hpp"
 #include "freertos/idf_additions.h"
+#include "portmacro.h"
+#include "utils.hpp"
 #include <cstring>
 #include <ctime>
 
@@ -11,14 +13,9 @@ namespace SDS011 {
 
 static const char *TAG = "SDS011";
 
-#define DEBUG 0
+#define DEBUG 1
 
-Device::Device(const uart_port_t p) : port(p), initialised(false), shutdown(false) {
-    shutdownAck = xSemaphoreCreateBinary();
-    if (!shutdownAck) {
-        ESP_LOGE(TAG, "Failed to create semaphore");
-    }
-};
+Device::Device(const uart_port_t p) : port(p), initialised(false), shutdown(false) {};
 
 Device::~Device() {
     if (shutdownAck) {
@@ -33,6 +30,20 @@ void sdsTask(void *pvParameters) {
 }
 
 bool Device::init() {
+    shutdownAck = xSemaphoreCreateBinary();
+    if (!shutdownAck) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to create semaphore");
+#endif
+        return false;
+    }
+    uartMutex = xSemaphoreCreateMutex();
+    if (uartMutex == nullptr) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to create uart mutex");
+#endif
+        return false;
+    }
     TickType_t startInit = xTaskGetTickCount();
 #if DEBUG
     const auto startTime = millis();
@@ -68,7 +79,10 @@ bool Device::init() {
 #if DEBUG
     ESP_LOGI(TAG, "SDS011 UART initialised");
 #endif
-    if (!wake()) {
+    xSemaphoreTake(uartMutex, portMAX_DELAY);
+    const bool res = wake();
+    xSemaphoreGive(uartMutex);
+    if (!res) {
         return false;
     }
     initialised = true;
@@ -149,6 +163,7 @@ bool Device::sleep() {
         xTaskAbortDelay(taskHandle);
     }
     xSemaphoreTake(shutdownAck, portMAX_DELAY);
+    xSemaphoreTake(uartMutex, portMAX_DELAY);
     uart_flush_input(port);
 #if DEBUG
     ESP_LOGI(TAG, "Setting SDS011 to sleeping state...");
@@ -157,24 +172,27 @@ bool Device::sleep() {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to set SDS011 to sleeping state!");
 #endif
+        xSemaphoreGive(uartMutex);
         return false;
     }
     std::uint8_t res[SDS_RESPONSE_LENGTH];
-    if (!readResponse(res)) {
+    const bool result = readResponse(res);
+    xSemaphoreGive(uartMutex);
+    if (!result) {
 #if DEBUG
-        ESP_LOGW(TAG, "Failed to query SDS011 working mode!");
+        ESP_LOGE(TAG, "Failed to query SDS011 working mode!");
 #endif
         return false;
     }
     if (res[2] != 0x06) {
 #if DEBUG
-        ESP_LOGW(TAG, "Working mode query incorrect command!");
+        ESP_LOGE(TAG, "Working mode query incorrect command!");
 #endif
         return false;
     }
     if (res[4] != 0x00) { // Sleep
 #if DEBUG
-        ESP_LOGW(TAG, "Working mode query returned non-sleeping result!");
+        ESP_LOGE(TAG, "Working mode query returned non-sleeping result!");
 #endif
         return false;
     }
@@ -250,15 +268,19 @@ void Device::start() {
             vTaskDelete(NULL);
             return;
         }
+        xSemaphoreTake(uartMutex, portMAX_DELAY);
         uart_flush_input(port);
         if (!sendCommand(SDS_QUERY_DATA_FRAME)) {
 #if DEBUG
             ESP_LOGE(TAG, "Failed to send query data frame!");
 #endif
+            xSemaphoreGive(uartMutex);
             vTaskDelayUntil(&startLoop, pdMS_TO_TICKS(READING_FREQ_MS));
             continue;
         }
-        if (!readResponse(frame, pdMS_TO_TICKS(200))) {
+        const bool result = readResponse(frame, pdMS_TO_TICKS(200));
+        xSemaphoreGive(uartMutex);
+        if (!result) {
 #if DEBUG
             ESP_LOGE(TAG, "Failed to read data response frame!");
 #endif

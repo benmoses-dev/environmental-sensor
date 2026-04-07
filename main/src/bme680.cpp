@@ -17,16 +17,11 @@ namespace BME680 {
 
 static const char *TAG = "BME680";
 
-#define DEBUG 0
+#define DEBUG 1
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), measStart(0), measDur(0), initialised(false),
-      shutdown(false) {
-    shutdownAck = xSemaphoreCreateBinary();
-    if (!shutdownAck) {
-        ESP_LOGE(TAG, "Failed to create semaphore");
-    }
-}
+      shutdown(false) {}
 
 Device::~Device() {
     if (shutdownAck) {
@@ -41,6 +36,13 @@ void bme680Task(void *pvParameters) {
 }
 
 bool Device::init() {
+    shutdownAck = xSemaphoreCreateBinary();
+    if (!shutdownAck) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to create semaphore");
+#endif
+        return false;
+    }
     TickType_t startInit = xTaskGetTickCount();
 #if DEBUG
     const auto startTime = millis();

@@ -41,6 +41,7 @@ class Device : public ISensor {
     bool shutdown;
     portMUX_TYPE shutdownMux = portMUX_INITIALIZER_UNLOCKED;
     SemaphoreHandle_t shutdownAck = nullptr;
+    SemaphoreHandle_t uartMutex = nullptr;
     TaskHandle_t taskHandle = nullptr;
     static constexpr std::uint32_t READING_FREQ_MS =
         std::max(SDS011_READING_FREQ_MS, static_cast<std::uint32_t>(3'000));

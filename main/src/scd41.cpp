@@ -18,12 +18,7 @@ void scdTask(void *pvParameters) {
 }
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
-    : i2c_port(port), i2c_addr(addr), initialised(false), shutdown(false) {
-    shutdownAck = xSemaphoreCreateBinary();
-    if (!shutdownAck) {
-        ESP_LOGE(TAG, "Failed to create semaphore");
-    }
-}
+    : i2c_port(port), i2c_addr(addr), initialised(false), shutdown(false) {}
 
 Device::~Device() {
     if (shutdownAck) {
@@ -33,6 +28,13 @@ Device::~Device() {
 }
 
 bool Device::init() {
+    shutdownAck = xSemaphoreCreateBinary();
+    if (!shutdownAck) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to create semaphore");
+#endif
+        return false;
+    }
     TickType_t startInit = xTaskGetTickCount();
 #if DEBUG
     const auto startTime = millis();
