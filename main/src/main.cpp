@@ -295,6 +295,9 @@ extern "C" void app_main() {
 #if DEBUG
     ESP_LOGI(TAG, "Initialised %d Sensors...", count);
 #endif
+#if DEBUG
+    ESP_LOGI(TAG, "Waiting until end of warmup period...");
+#endif
     xTaskDelayUntil(&startInit, pdMS_TO_TICKS(WARMUP_MS));
     eventQueue = xQueueCreate(1000, sizeof(Event));
     if (OPERATING_MODE == 0) { // Continuous
@@ -305,9 +308,6 @@ extern "C" void app_main() {
         xTaskCreate(logTask, "LogTask", 4096, NULL, 3, NULL);
         return;
     }
-#if DEBUG
-    ESP_LOGI(TAG, "Periodic mode - waiting until end of measurement period...");
-#endif
     takeReadings();
     shutdownSensors();
     publishReadings(0);
