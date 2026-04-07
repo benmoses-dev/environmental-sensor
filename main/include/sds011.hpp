@@ -42,6 +42,7 @@ class Device : public ISensor {
     bool shutdown;
     portMUX_TYPE shutdownMux = portMUX_INITIALIZER_UNLOCKED;
     SemaphoreHandle_t shutdownAck = nullptr;
+    TaskHandle_t taskHandle = nullptr;
     static constexpr std::size_t SDS_FRAME_LENGTH = 19;
     static constexpr std::size_t SDS_RESPONSE_LENGTH = 10;
     static constexpr std::uint8_t SDS_WAKE_FRAME[SDS_FRAME_LENGTH] = {

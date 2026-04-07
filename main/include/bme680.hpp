@@ -4,6 +4,7 @@
 #include "config.hpp"
 #include "driver/i2c.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/idf_additions.h"
 #include "freertos/queue.h"
 #include "sensor.hpp"
 #include <cstdint>
@@ -45,8 +46,11 @@ class Device : public ISensor {
     std::int32_t _sensorID;
     std::uint32_t measStart = 0;
     std::uint32_t measDur = 0;
-    bool initialised;
-    portMUX_TYPE initMux = portMUX_INITIALIZER_UNLOCKED;
+    volatile bool initialised;
+    bool shutdown;
+    portMUX_TYPE shutdownMux = portMUX_INITIALIZER_UNLOCKED;
+    SemaphoreHandle_t shutdownAck = nullptr;
+    TaskHandle_t taskHandle = nullptr;
     static constexpr std::uint32_t READING_DURATION_MS = 200;
 
     Reading reading;

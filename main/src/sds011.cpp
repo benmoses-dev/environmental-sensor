@@ -83,7 +83,7 @@ bool Device::init() {
     ESP_LOGI(TAG, "Init took: %u, predicted: %u", totalTime, getInitTime());
 #endif
     vTaskDelayUntil(&startInit, pdMS_TO_TICKS(getInitTime()));
-    xTaskCreate(sdsTask, "SDSTask", 4096, this, 5, NULL);
+    xTaskCreate(sdsTask, "SDSTask", 4096, this, 5, &taskHandle);
     return true;
 }
 
@@ -150,6 +150,9 @@ bool Device::sleep() {
     taskENTER_CRITICAL(&shutdownMux);
     shutdown = true;
     taskEXIT_CRITICAL(&shutdownMux);
+    if (taskHandle) {
+        xTaskAbortDelay(taskHandle);
+    }
     xSemaphoreTake(shutdownAck, portMAX_DELAY);
     uart_flush_input(port);
 #if DEBUG
@@ -257,12 +260,14 @@ void Device::start() {
 #if DEBUG
             ESP_LOGE(TAG, "Failed to send query data frame!");
 #endif
+            vTaskDelayUntil(&startLoop, pdMS_TO_TICKS(READING_FREQ_MS));
             continue;
         }
         if (!readResponse(frame, pdMS_TO_TICKS(200))) {
 #if DEBUG
             ESP_LOGE(TAG, "Failed to read data response frame!");
 #endif
+            vTaskDelayUntil(&startLoop, pdMS_TO_TICKS(READING_FREQ_MS));
             continue;
         }
         Reading res{};
@@ -282,7 +287,7 @@ void Device::start() {
             ESP_LOGW(TAG, "Reading is invalid!");
 #endif
         }
-        xTaskDelayUntil(&startLoop, pdMS_TO_TICKS(READING_FREQ_MS));
+        vTaskDelayUntil(&startLoop, pdMS_TO_TICKS(READING_FREQ_MS));
     }
 }
 

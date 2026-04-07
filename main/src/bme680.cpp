@@ -17,9 +17,20 @@ static const char *TAG = "BME680";
 #define DEBUG 1
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
-    : i2c_port(port), i2c_addr(addr), measStart(0), measDur(0), initialised(false) {}
+    : i2c_port(port), i2c_addr(addr), measStart(0), measDur(0), initialised(false),
+      shutdown(false) {
+    shutdownAck = xSemaphoreCreateBinary();
+    if (!shutdownAck) {
+        ESP_LOGE(TAG, "Failed to create semaphore");
+    }
+}
 
-Device::~Device() {}
+Device::~Device() {
+    if (shutdownAck) {
+        vSemaphoreDelete(shutdownAck);
+        shutdownAck = nullptr;
+    }
+}
 
 void bme680Task(void *pvParameters) {
     Device *bme = static_cast<Device *>(pvParameters);
@@ -94,16 +105,14 @@ bool Device::init() {
         return false;
     }
     ESP_LOGI(TAG, "BME680 configured successfully!");
-    taskENTER_CRITICAL(&initMux);
     initialised = true;
-    taskEXIT_CRITICAL(&initMux);
 #if DEBUG
     const auto endTime = millis();
     const auto totalTime = endTime - startTime;
     ESP_LOGI(TAG, "Init took: %u, predicted: %u", totalTime, getInitTime());
 #endif
     vTaskDelayUntil(&startInit, pdMS_TO_TICKS(getInitTime()));
-    xTaskCreate(bme680Task, "BME680Task", 4096, this, 5, NULL);
+    xTaskCreate(bme680Task, "BME680Task", 4096, this, 5, &taskHandle);
     return true;
 }
 
@@ -113,10 +122,15 @@ void Device::start() {
 #if DEBUG
         const auto sTime = millis();
 #endif
-        if (!isInitialised()) {
+        bool shouldStop;
+        taskENTER_CRITICAL(&shutdownMux);
+        shouldStop = shutdown;
+        taskEXIT_CRITICAL(&shutdownMux);
+        if (shouldStop) {
 #if DEBUG
             ESP_LOGI(TAG, "BME680 read-loop task stopping...");
 #endif
+            xSemaphoreGive(shutdownAck);
             vTaskDelete(NULL);
             return;
         }
@@ -124,6 +138,8 @@ void Device::start() {
 #if DEBUG
             ESP_LOGW(TAG, "Failed to take reading in read-loop!");
 #endif
+            vTaskDelayUntil(&last, pdMS_TO_TICKS(BME680_HEATER_FREQ_MS));
+            continue;
         }
 #if DEBUG
         const auto eTime = millis();
@@ -135,13 +151,7 @@ void Device::start() {
     }
 }
 
-bool Device::isInitialised() {
-    bool res;
-    taskENTER_CRITICAL(&initMux);
-    res = initialised;
-    taskEXIT_CRITICAL(&initMux);
-    return res;
-}
+bool Device::isInitialised() { return initialised; }
 
 void Device::logReadings(QueueHandle_t q) {
     Reading res{};
@@ -172,16 +182,21 @@ void Device::logReadings(QueueHandle_t q) {
 }
 
 bool Device::sleep() {
-    taskENTER_CRITICAL(&initMux);
-    initialised = false;
-    taskEXIT_CRITICAL(&initMux);
-    // Todo: we may need to wait here for the task to kill itself
-    // std::int8_t res =
-    //     bme68x_set_op_mode(BME68X_SLEEP_MODE, &gas_sensor); // Probably not needed
-    // if (res != BME68X_OK) {
-    //     ESP_LOGE(TAG, "Failed to set operating mode while sleeping!");
-    //     return 0;
-    // }
+    taskENTER_CRITICAL(&shutdownMux);
+    shutdown = true;
+    taskEXIT_CRITICAL(&shutdownMux);
+    if (taskHandle) {
+        xTaskAbortDelay(taskHandle);
+    }
+    xSemaphoreTake(shutdownAck, portMAX_DELAY);
+#if DEBUG
+    ESP_LOGI(TAG, "Got shutdown semaphore, sleeping...");
+#endif
+    const std::int8_t res = bme68x_set_op_mode(BME68X_SLEEP_MODE, &gas_sensor);
+    if (res != BME68X_OK) {
+        ESP_LOGE(TAG, "Failed to set operating mode while sleeping!");
+        return false;
+    }
     return true;
 }
 
