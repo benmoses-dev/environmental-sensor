@@ -1,16 +1,14 @@
 #include "scd41.hpp"
-#include "config.hpp"
 #include "esp_log.h"
 #include "events.hpp"
+#include "freertos/idf_additions.h"
+#include "i2c.hpp"
+#include "portmacro.h"
 #include "utils.hpp"
-#include <algorithm>
 
 namespace SCD41 {
 
 static const char *TAG = "SCD41";
-
-constexpr std::uint32_t SINGLE_SHOT_FREQ_MS =
-    std::max(SCD41_SINGLE_SHOT_FREQ_MS, static_cast<std::uint32_t>(5'010));
 
 #define DEBUG 1
 
@@ -20,9 +18,19 @@ void scdTask(void *pvParameters) {
 }
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
-    : i2c_port(port), i2c_addr(addr), initialised(false) {}
+    : i2c_port(port), i2c_addr(addr), initialised(false), shutdown(false) {
+    shutdownAck = xSemaphoreCreateBinary();
+    if (!shutdownAck) {
+        ESP_LOGE(TAG, "Failed to create semaphore");
+    }
+}
 
-Device::~Device() {}
+Device::~Device() {
+    if (shutdownAck) {
+        vSemaphoreDelete(shutdownAck);
+        shutdownAck = nullptr;
+    }
+}
 
 bool Device::init() {
     TickType_t startInit = xTaskGetTickCount();
@@ -41,29 +49,30 @@ bool Device::init() {
         return false;
     }
     ESP_LOGI(TAG, "SCD41 initialised successfully!");
-    taskENTER_CRITICAL(&initMux);
     initialised = true;
-    taskEXIT_CRITICAL(&initMux);
 #if DEBUG
     const auto endTime = millis();
     const auto totalTime = endTime - startTime;
     ESP_LOGI(TAG, "Init took: %u", totalTime);
 #endif
     vTaskDelayUntil(&startInit, pdMS_TO_TICKS(getInitTime()));
-    xTaskCreate(scdTask, "SCDTask", 4096, this, 5, NULL);
+    xTaskCreate(scdTask, "SCDTask", 4096, this, 5, &taskHandle);
     return true;
 }
 
 void Device::start() {
     TickType_t last = xTaskGetTickCount();
     while (true) {
-        const auto diff = SINGLE_SHOT_FREQ_MS - 5010;
-        delay_ms(diff);
 #if DEBUG
         const auto sTime = millis();
 #endif
-        if (!isInitialised()) {
+        bool shouldStop;
+        taskENTER_CRITICAL(&shutdownMux);
+        shouldStop = shutdown;
+        taskEXIT_CRITICAL(&shutdownMux);
+        if (shouldStop) {
             ESP_LOGI(TAG, "SCD41 read-loop task stopping...");
+            xSemaphoreGive(shutdownAck);
             vTaskDelete(NULL);
             return;
         }
@@ -72,12 +81,14 @@ void Device::start() {
 #if DEBUG
             ESP_LOGE(TAG, "Failed to start single shot!");
 #endif
+            vTaskDelayUntil(&last, pdMS_TO_TICKS(SINGLE_SHOT_FREQ_MS));
             continue;
         }
         if (!getReading()) {
 #if DEBUG
             ESP_LOGE(TAG, "Failed to get reading!");
 #endif
+            vTaskDelayUntil(&last, pdMS_TO_TICKS(SINGLE_SHOT_FREQ_MS));
             continue;
         }
 #if DEBUG
@@ -89,19 +100,16 @@ void Device::start() {
     }
 }
 
-bool Device::isInitialised() {
-    bool res;
-    taskENTER_CRITICAL(&initMux);
-    res = initialised;
-    taskEXIT_CRITICAL(&initMux);
-    return res;
-}
+bool Device::isInitialised() { return initialised; }
 
 bool Device::sleep() {
-    taskENTER_CRITICAL(&initMux);
-    initialised = false;
-    taskEXIT_CRITICAL(&initMux);
-    // Todo: may need to either wait here or stop the periodic task.
+    taskENTER_CRITICAL(&shutdownMux);
+    shutdown = true;
+    taskEXIT_CRITICAL(&shutdownMux);
+    if (taskHandle) {
+        xTaskAbortDelay(taskHandle);
+    }
+    xSemaphoreTake(shutdownAck, portMAX_DELAY);
     const bool stopped = stopPeriodicMeasurement();
 #if DEBUG
     if (!stopped) {
@@ -124,9 +132,15 @@ void Device::logReadings(QueueHandle_t q) {
     res = reading;
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
-    if (res.read || !res.valid) {
+    if (res.read) {
 #if DEBUG
-        ESP_LOGW(TAG, "Reading has already been read or is invalid...");
+        ESP_LOGW(TAG, "Reading has already been read...");
+#endif
+        return;
+    }
+    if (!res.valid) {
+#if DEBUG
+        ESP_LOGW(TAG, "Reading is invalid...");
 #endif
         return;
     }
@@ -178,15 +192,23 @@ bool Device::getReading() {
 }
 
 bool Device::startPeriodicMeasurement() {
-    return write16(CMD_START_PERIODIC_MEASUREMENT);
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
+    const bool res = write16(CMD_START_PERIODIC_MEASUREMENT);
+    xSemaphoreGive(i2cMutex);
+    return res;
 }
 
 bool Device::startLowPowerPeriodicMeasurement() {
-    return write16(CMD_START_LP_PERIODIC_MEASUREMENT);
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
+    const bool res = write16(CMD_START_LP_PERIODIC_MEASUREMENT);
+    xSemaphoreGive(i2cMutex);
+    return res;
 }
 
 bool Device::singleShot() {
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
     const bool res = write16(CMD_MEASURE_SH);
+    xSemaphoreGive(i2cMutex);
     if (!res) {
         return false;
     }
@@ -195,7 +217,9 @@ bool Device::singleShot() {
 }
 
 bool Device::singleShotRHT() {
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
     const bool res = write16(CMD_MEASURE_SH_RHT);
+    xSemaphoreGive(i2cMutex);
     if (!res) {
         return false;
     }
@@ -204,38 +228,42 @@ bool Device::singleShotRHT() {
 }
 
 bool Device::stopPeriodicMeasurement() {
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
     const bool res = write16(CMD_STOP_PERIODIC_MEASUREMENT);
+    xSemaphoreGive(i2cMutex);
     delay_ms(500);
     return res;
 }
 
 bool Device::powerDown() {
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
     const bool res = write16(CMD_POWER_DOWN);
+    xSemaphoreGive(i2cMutex);
     delay_ms(1);
     return res;
 }
 
 bool Device::wake() {
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
     const bool res = write16(CMD_WAKE_UP);
+    xSemaphoreGive(i2cMutex);
     delay_ms(30);
     return res;
 }
 
-bool Device::readBytes(std::uint8_t *buffer, std::size_t len) {
-    const esp_err_t res =
-        i2c_master_read_from_device(i2c_port, i2c_addr, buffer, len, pdMS_TO_TICKS(100));
-    return res == ESP_OK;
-}
-
 bool Device::readMeasurement(std::uint8_t *buffer) {
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
     if (!write16(CMD_READ_MEASUREMENT)) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to send read measurement command");
 #endif
+        xSemaphoreGive(i2cMutex);
         return false;
     }
     delay_ms(1);
-    if (!readBytes(buffer, 9)) {
+    const bool res = readBytes(buffer, 9);
+    xSemaphoreGive(i2cMutex);
+    if (!res) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to read measurement bytes");
 #endif
@@ -253,15 +281,19 @@ bool Device::readMeasurement(std::uint8_t *buffer) {
 }
 
 bool Device::isDataReady() {
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
     if (!write16(CMD_GET_DATA_READY_STATUS)) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to send data ready status command");
 #endif
+        xSemaphoreGive(i2cMutex);
         return false;
     }
     delay_ms(1);
     std::uint8_t raw[3];
-    if (!readBytes(raw, 3)) {
+    const bool res = readBytes(raw, 3);
+    xSemaphoreGive(i2cMutex);
+    if (!res) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to read data ready status");
 #endif
@@ -306,6 +338,12 @@ bool Device::write16WithArg(const std::uint16_t cmd, const std::uint16_t arg) {
     data[4] = getCRC8(&data[2]);
     const esp_err_t res =
         i2c_master_write_to_device(i2c_port, i2c_addr, data, 5, pdMS_TO_TICKS(100));
+    return res == ESP_OK;
+}
+
+bool Device::readBytes(std::uint8_t *buffer, std::size_t len) {
+    const esp_err_t res =
+        i2c_master_read_from_device(i2c_port, i2c_addr, buffer, len, pdMS_TO_TICKS(100));
     return res == ESP_OK;
 }
 

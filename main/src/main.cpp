@@ -5,8 +5,10 @@
 #include "esp_sleep.h"
 #include "esp_system.h"
 #include "events.hpp"
+#include "freertos/idf_additions.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "i2c.hpp"
 #include "mqtt.hpp"
 #include "scd41.hpp"
 #include "sds011.hpp"
@@ -24,6 +26,7 @@ static const char *TAG = "MAIN";
 WIFI wifi;
 MQTT mqtt;
 QueueHandle_t eventQueue;
+SemaphoreHandle_t i2cMutex = nullptr;
 
 #if READ_BME280
 BME280::Device bme280;
@@ -241,6 +244,13 @@ void logTask(void *pvParameters) {
 }
 
 extern "C" void app_main() {
+    i2cMutex = xSemaphoreCreateMutex();
+    if (i2cMutex == nullptr) {
+#if DEBUG
+        ESP_LOGE(TAG, "Could not create i2c mutex, aborting...");
+#endif
+        goToSleep();
+    }
     TickType_t startMain = xTaskGetTickCount();
 #if DEBUG
     const auto sTime = millis();

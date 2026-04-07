@@ -4,6 +4,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "sensor.hpp"
+#include <algorithm>
 #include <ctime>
 
 namespace SCD41 {
@@ -25,8 +26,10 @@ class Device : public ISensor {
 
     bool init() override;
     std::uint32_t getInitTime() override { return 530; };
-    std::uint32_t getDataReadyTime() override { return SCD41_SINGLE_SHOT_FREQ_MS * 2; };
-    std::uint32_t getLoopTime() override { return SCD41_SINGLE_SHOT_FREQ_MS; };
+    std::uint32_t getDataReadyTime() override {
+        return SINGLE_SHOT_FREQ_MS + READING_DURATION_MS;
+    };
+    std::uint32_t getLoopTime() override { return SINGLE_SHOT_FREQ_MS; };
     void start();
     bool isInitialised() override;
     bool sleep() override;
@@ -37,9 +40,14 @@ class Device : public ISensor {
     const std::uint8_t i2c_addr;
     Reading reading;
     portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
-    bool initialised;
-    portMUX_TYPE initMux = portMUX_INITIALIZER_UNLOCKED;
+    volatile bool initialised;
+    bool shutdown;
+    portMUX_TYPE shutdownMux = portMUX_INITIALIZER_UNLOCKED;
+    SemaphoreHandle_t shutdownAck = nullptr;
+    TaskHandle_t taskHandle = nullptr;
     static constexpr std::uint32_t READING_DURATION_MS = 5010;
+    static constexpr std::uint32_t SINGLE_SHOT_FREQ_MS =
+        std::max(SCD41_SINGLE_SHOT_FREQ_MS, READING_DURATION_MS);
 
     bool getReading();
     bool startPeriodicMeasurement();

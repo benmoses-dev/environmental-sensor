@@ -4,17 +4,12 @@
 #include "esp_log.h"
 #include "events.hpp"
 #include "freertos/idf_additions.h"
-#include "utils.hpp"
-#include <algorithm>
 #include <cstring>
 #include <ctime>
 
 namespace SDS011 {
 
 static const char *TAG = "SDS011";
-
-constexpr std::uint32_t READING_FREQ_MS =
-    std::max(SDS011_READING_FREQ_MS, static_cast<std::uint32_t>(3'000));
 
 #define DEBUG 0
 

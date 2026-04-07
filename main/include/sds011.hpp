@@ -5,6 +5,7 @@
 #include "freertos/idf_additions.h"
 #include "freertos/queue.h"
 #include "sensor.hpp"
+#include <algorithm>
 #include <cstring>
 #include <ctime>
 
@@ -26,9 +27,7 @@ class Device : public ISensor {
     bool init() override;
     std::uint32_t getInitTime() override { return 700; };
     std::uint32_t getDataReadyTime() override { return 30'000; };
-    std::uint32_t getLoopTime() override {
-        return SDS011_READING_FREQ_MS;
-    }; // Todo: forced loop.
+    std::uint32_t getLoopTime() override { return READING_FREQ_MS; };
     void logReadings(QueueHandle_t q) override;
     void start();
     bool sleep() override;
@@ -43,6 +42,8 @@ class Device : public ISensor {
     portMUX_TYPE shutdownMux = portMUX_INITIALIZER_UNLOCKED;
     SemaphoreHandle_t shutdownAck = nullptr;
     TaskHandle_t taskHandle = nullptr;
+    static constexpr std::uint32_t READING_FREQ_MS =
+        std::max(SDS011_READING_FREQ_MS, static_cast<std::uint32_t>(3'000));
     static constexpr std::size_t SDS_FRAME_LENGTH = 19;
     static constexpr std::size_t SDS_RESPONSE_LENGTH = 10;
     static constexpr std::uint8_t SDS_WAKE_FRAME[SDS_FRAME_LENGTH] = {
