@@ -62,7 +62,7 @@ inline constexpr uart_port_t UART_PORT = UART_NUM_2;
 inline constexpr std::uint8_t TX_PIN = 19;
 inline constexpr std::uint8_t RX_PIN = 18;
 inline constexpr std::uint32_t UART_BUF_SIZE = 256;
-inline constexpr std::uint32_t SDS011_READING_FREQ_MS = 1'000;
+inline constexpr std::uint32_t SDS011_READING_FREQ_MS = 5'000;
 
 /**
  * Sensor adjustments.

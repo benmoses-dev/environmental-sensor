@@ -38,8 +38,10 @@ class Device : public ISensor {
     const uart_port_t port;
     Reading reading;
     portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
-    bool initialised;
-    portMUX_TYPE initMux = portMUX_INITIALIZER_UNLOCKED;
+    volatile bool initialised;
+    bool shutdown;
+    portMUX_TYPE shutdownMux = portMUX_INITIALIZER_UNLOCKED;
+    SemaphoreHandle_t shutdownAck = nullptr;
     static constexpr std::size_t SDS_FRAME_LENGTH = 19;
     static constexpr std::size_t SDS_RESPONSE_LENGTH = 10;
     static constexpr std::uint8_t SDS_WAKE_FRAME[SDS_FRAME_LENGTH] = {
@@ -67,7 +69,7 @@ class Device : public ISensor {
     static void parseFrame(const std::uint8_t frame[10], Reading &r);
     bool sendCommand(const std::uint8_t (&frame)[SDS_FRAME_LENGTH]);
     bool readResponse(std::uint8_t (&res)[SDS_RESPONSE_LENGTH],
-                      TickType_t timeout = pdMS_TO_TICKS(100));
+                      TickType_t timeout = pdMS_TO_TICKS(1000));
     bool wake();
 };
 

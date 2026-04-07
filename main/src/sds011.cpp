@@ -3,7 +3,9 @@
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "events.hpp"
+#include "freertos/idf_additions.h"
 #include "utils.hpp"
+#include <algorithm>
 #include <cstring>
 #include <ctime>
 
@@ -11,11 +13,24 @@ namespace SDS011 {
 
 static const char *TAG = "SDS011";
 
+constexpr std::uint32_t READING_FREQ_MS =
+    std::max(SDS011_READING_FREQ_MS, static_cast<std::uint32_t>(3'000));
+
 #define DEBUG 1
 
-Device::Device(const uart_port_t p) : port(p), initialised(false) {};
+Device::Device(const uart_port_t p) : port(p), initialised(false), shutdown(false) {
+    shutdownAck = xSemaphoreCreateBinary();
+    if (!shutdownAck) {
+        ESP_LOGE(TAG, "Failed to create semaphore");
+    }
+};
 
-Device::~Device() {};
+Device::~Device() {
+    if (shutdownAck) {
+        vSemaphoreDelete(shutdownAck);
+        shutdownAck = nullptr;
+    }
+};
 
 void sdsTask(void *pvParameters) {
     Device *sds = static_cast<Device *>(pvParameters);
@@ -61,9 +76,7 @@ bool Device::init() {
     if (!wake()) {
         return false;
     }
-    taskENTER_CRITICAL(&initMux);
     initialised = true;
-    taskEXIT_CRITICAL(&initMux);
 #if DEBUG
     const auto endTime = millis();
     const auto totalTime = endTime - startTime;
@@ -83,7 +96,7 @@ bool Device::wake() {
         return false;
     }
     std::uint8_t res[SDS_RESPONSE_LENGTH];
-    if (!readResponse(res, pdMS_TO_TICKS(1000))) {
+    if (!readResponse(res)) {
 #if DEBUG
         ESP_LOGW(TAG, "Failed to query SDS011 working mode!");
 #endif
@@ -105,39 +118,39 @@ bool Device::wake() {
     ESP_LOGI(TAG, "Set SDS011 to working state.");
 #endif
     uart_flush_input(port);
-    if (!sendCommand(SDS_SET_ACTIVE_MODE_FRAME)) {
+    if (!sendCommand(SDS_SET_QUERY_MODE_FRAME)) {
 #if DEBUG
-        ESP_LOGE(TAG, "Failed to set SDS011 to active mode!");
+        ESP_LOGE(TAG, "Failed to set SDS011 to query mode!");
 #endif
         return false;
     }
-    if (!readResponse(res, pdMS_TO_TICKS(1000))) {
+    if (!readResponse(res)) {
 #if DEBUG
         ESP_LOGW(TAG, "Failed to query SDS011 active mode!");
 #endif
         return false;
     }
-    if (res[2] != 0x02) {
+    if (res[1] != 0xC5 || res[2] != 0x02) {
 #if DEBUG
         ESP_LOGW(TAG, "Active mode query incorrect command!");
 #endif
         return false;
     }
-    if (res[4] != 0x00) { // Active
+    if (res[4] != 0x01) { // Query
 #if DEBUG
-        ESP_LOGW(TAG, "Active mode query returned non-active result!");
+        ESP_LOGW(TAG, "Query mode query returned non-active result!");
 #endif
         return false;
     }
-    ESP_LOGI(TAG, "Set SDS011 to active mode.");
+    ESP_LOGI(TAG, "Set SDS011 to query mode.");
     return true;
 }
 
 bool Device::sleep() {
-    taskENTER_CRITICAL(&initMux);
-    initialised = false;
-    taskEXIT_CRITICAL(&initMux);
-    delay_ms(300);
+    taskENTER_CRITICAL(&shutdownMux);
+    shutdown = true;
+    taskEXIT_CRITICAL(&shutdownMux);
+    xSemaphoreTake(shutdownAck, portMAX_DELAY);
     uart_flush_input(port);
 #if DEBUG
     ESP_LOGI(TAG, "Setting SDS011 to sleeping state...");
@@ -149,7 +162,7 @@ bool Device::sleep() {
         return false;
     }
     std::uint8_t res[SDS_RESPONSE_LENGTH];
-    if (!readResponse(res, pdMS_TO_TICKS(1000))) {
+    if (!readResponse(res)) {
 #if DEBUG
         ESP_LOGW(TAG, "Failed to query SDS011 working mode!");
 #endif
@@ -175,13 +188,7 @@ bool Device::sleep() {
     return true;
 }
 
-bool Device::isInitialised() {
-    bool res;
-    taskENTER_CRITICAL(&initMux);
-    res = initialised;
-    taskEXIT_CRITICAL(&initMux);
-    return res;
-}
+bool Device::isInitialised() { return initialised; }
 
 void Device::logReadings(QueueHandle_t q) {
     Reading res{};
@@ -229,18 +236,33 @@ bool Device::sendCommand(const std::uint8_t (&frame)[SDS_FRAME_LENGTH]) {
 
 void Device::start() {
     std::uint8_t frame[SDS_RESPONSE_LENGTH];
-    uart_flush_input(port);
-    // #if DEBUG
-    //     const auto sTime = millis();
-    //     std::uint32_t count = 0;
-    // #endif
+    TickType_t startLoop = xTaskGetTickCount();
     while (true) {
-        if (!isInitialised()) {
+#if DEBUG
+        const auto sTime = millis();
+        ESP_LOGI(TAG, "Start loop time: %u", sTime);
+#endif
+        bool shouldStop;
+        taskENTER_CRITICAL(&shutdownMux);
+        shouldStop = shutdown;
+        taskEXIT_CRITICAL(&shutdownMux);
+        if (shouldStop) {
             ESP_LOGI(TAG, "SDS011 read-loop task stopping...");
+            xSemaphoreGive(shutdownAck);
             vTaskDelete(NULL);
             return;
         }
-        if (!readResponse(frame, 100)) {
+        uart_flush_input(port);
+        if (!sendCommand(SDS_QUERY_DATA_FRAME)) {
+#if DEBUG
+            ESP_LOGE(TAG, "Failed to send query data frame!");
+#endif
+            continue;
+        }
+        if (!readResponse(frame, pdMS_TO_TICKS(200))) {
+#if DEBUG
+            ESP_LOGE(TAG, "Failed to read data response frame!");
+#endif
             continue;
         }
         Reading res{};
@@ -249,14 +271,18 @@ void Device::start() {
             taskENTER_CRITICAL(&readingMux);
             reading = res;
             taskEXIT_CRITICAL(&readingMux);
-            // #if DEBUG
-            //             count++;
-            //             const auto eTime = millis();
-            //             const auto totalTime = eTime - sTime;
-            //             ESP_LOGI(TAG, "Total loop time: %u", totalTime);
-            //             ESP_LOGI(TAG, "Total loop count: %u", count);
-            // #endif
+#if DEBUG
+            const auto eTime = millis();
+            ESP_LOGI(TAG, "End loop time: %u", eTime);
+            const auto totalTime = eTime - sTime;
+            ESP_LOGI(TAG, "Total loop time: %u", totalTime);
+#endif
+        } else {
+#if DEBUG
+            ESP_LOGW(TAG, "Reading is invalid!");
+#endif
         }
+        xTaskDelayUntil(&startLoop, pdMS_TO_TICKS(READING_FREQ_MS));
     }
 }
 
