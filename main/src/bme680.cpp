@@ -57,9 +57,6 @@ bool Device::init() {
 #endif
         return false;
     }
-    /**
-     * LPF for sensor readings.
-     */
     if (!setIIRFilterSize(BME68X_FILTER_OFF)) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to set IIR filter!");
@@ -72,19 +69,19 @@ bool Device::init() {
 #endif
         return false;
     }
-    if (!setHumidityOversampling(BME68X_OS_16X)) {
+    if (!setHumidityOversampling(BME68X_OS_2X)) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to set humidity oversampling!");
 #endif
         return false;
     }
-    if (!setPressureOversampling(BME68X_OS_16X)) {
+    if (!setPressureOversampling(BME68X_OS_4X)) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to set pressure oversampling!");
 #endif
         return false;
     }
-    if (!setTemperatureOversampling(BME68X_OS_16X)) {
+    if (!setTemperatureOversampling(BME68X_OS_2X)) {
 #if DEBUG
         ESP_LOGE(TAG, "Failed to set temperature oversampling!");
 #endif
@@ -96,13 +93,6 @@ bool Device::init() {
 #endif
         return false;
     }
-    res = performReading();
-    if (!res) {
-#if DEBUG
-        ESP_LOGE(TAG, "Failed to perform initial reading!");
-#endif
-        return false;
-    }
     ESP_LOGI(TAG, "BME680 configured successfully!");
     taskENTER_CRITICAL(&initMux);
     initialised = true;
@@ -110,7 +100,7 @@ bool Device::init() {
 #if DEBUG
     const auto endTime = millis();
     const auto totalTime = endTime - startTime;
-    ESP_LOGI(TAG, "Init took: %u", totalTime);
+    ESP_LOGI(TAG, "Init took: %u, predicted: %u", totalTime, getInitTime());
 #endif
     vTaskDelayUntil(&startInit, pdMS_TO_TICKS(getInitTime()));
     xTaskCreate(bme680Task, "BME680Task", 4096, this, 5, NULL);
@@ -120,8 +110,6 @@ bool Device::init() {
 void Device::start() {
     TickType_t last = xTaskGetTickCount();
     while (true) {
-        const auto diff = BME680_HEATER_FREQ_MS < 300 ? 0 : BME680_HEATER_FREQ_MS - 300;
-        delay_ms(diff);
 #if DEBUG
         const auto sTime = millis();
 #endif
@@ -140,7 +128,8 @@ void Device::start() {
 #if DEBUG
         const auto eTime = millis();
         const auto totalTime = eTime - sTime;
-        ESP_LOGI(TAG, "Total loop time: %u", totalTime);
+        ESP_LOGI(TAG, "Total reading time: %u, predicted: %u", totalTime,
+                 READING_DURATION_MS);
 #endif
         vTaskDelayUntil(&last, pdMS_TO_TICKS(BME680_HEATER_FREQ_MS));
     }
@@ -160,9 +149,15 @@ void Device::logReadings(QueueHandle_t q) {
     res = reading;
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
-    if (res.read || !res.valid) {
+    if (res.read) {
 #if DEBUG
-        ESP_LOGW(TAG, "Reading has already been read or is invalid...");
+        ESP_LOGW(TAG, "Reading has already been read...");
+#endif
+        return;
+    }
+    if (!res.valid) {
+#if DEBUG
+        ESP_LOGW(TAG, "Reading is invalid...");
 #endif
         return;
     }
@@ -181,12 +176,12 @@ bool Device::sleep() {
     initialised = false;
     taskEXIT_CRITICAL(&initMux);
     // Todo: we may need to wait here for the task to kill itself
-    std::int8_t res =
-        bme68x_set_op_mode(BME68X_SLEEP_MODE, &gas_sensor); // Probably not needed
-    if (res != BME68X_OK) {
-        ESP_LOGE(TAG, "Failed to set operating mode while sleeping!");
-        return 0;
-    }
+    // std::int8_t res =
+    //     bme68x_set_op_mode(BME68X_SLEEP_MODE, &gas_sensor); // Probably not needed
+    // if (res != BME68X_OK) {
+    //     ESP_LOGE(TAG, "Failed to set operating mode while sleeping!");
+    //     return 0;
+    // }
     return true;
 }
 
@@ -210,7 +205,7 @@ std::uint32_t Device::beginReading() {
     const std::uint32_t heatTime =
         static_cast<std::uint32_t>(gas_heatr_conf.heatr_dur) * 1000;
     const std::uint32_t delay = readTime + heatTime;
-    measDur = delay / 1000;
+    measDur = (delay + 999) / 1000; // Round up to be safe
 #if DEBUG
     ESP_LOGI(TAG, "Read time: %u", readTime);
     ESP_LOGI(TAG, "Heat time: %u", heatTime);
@@ -231,7 +226,7 @@ bool Device::performReading() {
     }
     const std::int32_t remaining = remainingReadingMillis();
     if (remaining > 0) {
-        delay_ms(static_cast<std::uint32_t>(remaining) + 1'000);
+        delay_ms(static_cast<std::uint32_t>(remaining) + 5);
     }
     measStart = 0;
     measDur = 0;
@@ -254,16 +249,17 @@ bool Device::performReading() {
                  BME68X_HEAT_STAB_MSK, BME68X_GASM_VALID_MSK, data.status);
 #endif
         r.gasResistance = data.gas_resistance;
+        r.valid = true;
     } else {
 #if DEBUG
         ESP_LOGW(TAG, "Gas and Heat not ready! Heat: %d, Gas: %d, Status: %u",
                  BME68X_HEAT_STAB_MSK, BME68X_GASM_VALID_MSK, data.status);
 #endif
         r.gasResistance = 0.0f;
+        r.valid = false;
     }
     r.tval = time(NULL);
     r.read = false;
-    r.valid = true;
     taskENTER_CRITICAL(&readingMux);
     reading = r;
     taskEXIT_CRITICAL(&readingMux);

@@ -39,6 +39,7 @@ class Device : public ISensor {
     portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
     bool initialised;
     portMUX_TYPE initMux = portMUX_INITIALIZER_UNLOCKED;
+    static constexpr std::uint32_t READING_DURATION_MS = 5010;
 
     bool getReading();
     bool startPeriodicMeasurement();
