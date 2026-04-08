@@ -48,7 +48,7 @@ namespace BME280 {
 
 static const char *TAG = "BME280";
 
-#define DEBUG 1
+#define DEBUG 0
 
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), initialised(false), shutdown(false) {}
@@ -225,7 +225,7 @@ bool Device::performReading() {
             return false;
         }
 #if DEBUG
-        ESP_LOGI(TAG, "Data not ready, waiting 5ms...");
+        ESP_LOGW(TAG, "Data not ready, waiting 5ms...");
 #endif
         delay_ms(5);
     }

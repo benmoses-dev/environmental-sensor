@@ -10,7 +10,7 @@ namespace SCD41 {
 
 static const char *TAG = "SCD41";
 
-#define DEBUG 1
+#define DEBUG 0
 
 void scdTask(void *pvParameters) {
     Device *scd = static_cast<Device *>(pvParameters);
