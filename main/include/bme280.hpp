@@ -6,8 +6,18 @@
 #include "freertos/queue.h"
 #include "sensor.hpp"
 #include <cstdint>
+#include <ctime>
 
 namespace BME280 {
+
+struct Reading {
+    float temperature = 0.0f;
+    float pressure = 0.0f;
+    float humidity = 0.0f;
+    time_t tval = 0;
+    bool read = false;
+    bool valid = false;
+};
 
 class Device : public ISensor {
   public:
@@ -17,13 +27,14 @@ class Device : public ISensor {
 
     bool init() override;
     std::uint32_t getInitTime() override { return 130; };
-    std::uint32_t getDataReadyTime() override { return BME280_READ_FREQ_MS; };
+    std::uint32_t getDataReadyTime() override { return READING_DURATION_MS; };
     std::uint32_t getLoopTime() override {
         return BME280_READ_FREQ_MS;
     }; // Todo: forced mode.
     void logReadings(QueueHandle_t q) override;
     bool sleep() override;
     bool isInitialised() override;
+    void start();
 
   private:
     const i2c_port_t i2c_port;
@@ -31,6 +42,11 @@ class Device : public ISensor {
     volatile bool initialised;
     bool shutdown;
     portMUX_TYPE shutdownMux = portMUX_INITIALIZER_UNLOCKED;
+    SemaphoreHandle_t shutdownAck = nullptr;
+    TaskHandle_t taskHandle = nullptr;
+    Reading reading;
+    portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
+    static constexpr std::uint32_t READING_DURATION_MS = 200;
 
     struct Calibration {
         std::int32_t dig_T1;
@@ -71,6 +87,7 @@ class Device : public ISensor {
     bool isReadingCalibration() const;
     void readCalibration();
     void setSampling() const;
+    bool performReading();
     float readTemperature();
     float readPressure();
     float readHumidity();

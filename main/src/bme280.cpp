@@ -33,6 +33,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 #include "bme280.hpp"
+#include "config.hpp"
 #include "esp_log.h"
 #include "events.hpp"
 #include "freertos/idf_additions.h"
@@ -52,9 +53,26 @@ static const char *TAG = "BME280";
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), initialised(false), shutdown(false) {}
 
-Device::~Device() {}
+Device::~Device() {
+    if (shutdownAck) {
+        vSemaphoreDelete(shutdownAck);
+        shutdownAck = nullptr;
+    }
+}
+
+void bme280Task(void *pvParameters) {
+    Device *bme = static_cast<Device *>(pvParameters);
+    bme->start();
+}
 
 bool Device::init() {
+    shutdownAck = xSemaphoreCreateBinary();
+    if (!shutdownAck) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to create semaphore");
+#endif
+        return false;
+    }
     TickType_t startInit = xTaskGetTickCount();
 #if DEBUG
     const auto startTime = millis();
@@ -78,16 +96,69 @@ bool Device::init() {
 #if DEBUG
     const auto endTime = millis();
     const auto totalTime = endTime - startTime;
-    ESP_LOGI(TAG, "Init took: %u", totalTime);
+    ESP_LOGI(TAG, "Init took: %u, predicted: %u", totalTime, getInitTime());
 #endif
     vTaskDelayUntil(&startInit, pdMS_TO_TICKS(getInitTime()));
+    xTaskCreate(bme280Task, "BME280Task", 4096, this, 5, &taskHandle);
     return true;
 }
 
+void Device::start() {
+    TickType_t last = xTaskGetTickCount();
+    while (true) {
+#if DEBUG
+        const auto sTime = millis();
+#endif
+        bool shouldStop;
+        taskENTER_CRITICAL(&shutdownMux);
+        shouldStop = shutdown;
+        taskEXIT_CRITICAL(&shutdownMux);
+        if (shouldStop) {
+#if DEBUG
+            ESP_LOGI(TAG, "BME280 read-loop task stopping...");
+#endif
+            xSemaphoreGive(shutdownAck);
+            vTaskDelete(NULL);
+            return;
+        }
+        if (!performReading()) {
+#if DEBUG
+            ESP_LOGW(TAG, "Failed to take reading in read-loop!");
+#endif
+            vTaskDelayUntil(&last, pdMS_TO_TICKS(BME280_READ_FREQ_MS));
+            continue;
+        }
+#if DEBUG
+        const auto eTime = millis();
+        const auto totalTime = eTime - sTime;
+        ESP_LOGI(TAG, "Total reading time: %u, predicted: %u", totalTime,
+                 READING_DURATION_MS);
+#endif
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(BME280_READ_FREQ_MS));
+    }
+}
+
 void Device::logReadings(QueueHandle_t q) {
-    const Event tEvent = {readTemperature() + TEMP_ADJUST, time(NULL), EventType::TEMP};
-    const Event hEvent = {readHumidity() + HUM_ADJUST, time(NULL), EventType::HUM};
-    const Event pEvent = {readPressure() + PRES_ADJUST, time(NULL), EventType::PRES};
+    Reading res{};
+    taskENTER_CRITICAL(&readingMux);
+    res = reading;
+    reading.read = true;
+    taskEXIT_CRITICAL(&readingMux);
+    if (res.read) {
+#if DEBUG
+        ESP_LOGW(TAG, "Reading has already been read...");
+#endif
+        return;
+    }
+    if (!res.valid) {
+#if DEBUG
+        ESP_LOGW(TAG, "Reading is invalid...");
+#endif
+        return;
+    }
+    const Event tEvent = {res.temperature + TEMP_ADJUST, res.tval, EventType::TEMP};
+    const Event hEvent = {res.humidity + HUM_ADJUST, res.tval, EventType::HUM};
+    const Event pEvent = {res.pressure + PRES_ADJUST, res.tval, EventType::PRES};
     xQueueSend(q, &tEvent, portMAX_DELAY);
     xQueueSend(q, &hEvent, portMAX_DELAY);
     xQueueSend(q, &pEvent, portMAX_DELAY);
@@ -97,6 +168,26 @@ bool Device::sleep() {
     taskENTER_CRITICAL(&shutdownMux);
     shutdown = true;
     taskEXIT_CRITICAL(&shutdownMux);
+    if (taskHandle) {
+        xTaskAbortDelay(taskHandle);
+    }
+    xSemaphoreTake(shutdownAck, portMAX_DELAY);
+#if DEBUG
+    ESP_LOGI(TAG, "Got shutdown semaphore, sleeping...");
+#endif
+    return true;
+}
+
+bool Device::performReading() {
+    Reading res{};
+    res.temperature = readTemperature();
+    res.humidity = readHumidity();
+    res.pressure = readPressure();
+    res.tval = time(NULL);
+    res.valid = true;
+    taskENTER_CRITICAL(&readingMux);
+    reading = res;
+    taskEXIT_CRITICAL(&readingMux);
     return true;
 }
 
