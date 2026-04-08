@@ -83,13 +83,29 @@ bool Device::init() {
 #endif
         return false;
     }
-    write8(REG_RESET, 0xB6);
+    if (!write8(REG_RESET, 0xB6)) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to set reset register!");
+#endif
+        return false;
+    }
     delay_ms(10);
     while (isReadingCalibration()) {
         delay_ms(10);
     }
     readCalibration();
-    setSampling();
+    if (!setMode(MODE_SLEEP)) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to set sleep mode!");
+#endif
+        return false;
+    }
+    if (!setSampling()) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to set sampling config!");
+#endif
+        return false;
+    }
     delay_ms(100);
     ESP_LOGI(TAG, "BME280 initialised successfully!");
     initialised = true;
@@ -175,10 +191,44 @@ bool Device::sleep() {
 #if DEBUG
     ESP_LOGI(TAG, "Got shutdown semaphore, sleeping...");
 #endif
-    return true;
+    const bool res = setMode(MODE_SLEEP);
+#if DEBUG
+    if (!res) {
+        ESP_LOGW(TAG, "Failed to sleep device by setting sleep mode...");
+    }
+#endif
+    return res;
+}
+
+bool Device::isDataReady() const {
+    const std::uint8_t status = read8(REG_STATUS);
+    const bool measuring = (status & STATUS_MEASURING_MASK) != 0;
+    const bool imUpdating = (status & STATUS_IM_UPDATE_MASK) != 0;
+    return !measuring && !imUpdating;
 }
 
 bool Device::performReading() {
+    const bool result = setMode(MODE_FORCED);
+    if (!result) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to set forced mode!");
+#endif
+        return false;
+    }
+    delay_ms(MEAS_DUR_MS);
+    std::uint32_t tries = 0;
+    while (!isDataReady()) {
+        if (++tries >= 10) {
+#if DEBUG
+            ESP_LOGW(TAG, "Waited too long, exiting!");
+#endif
+            return false;
+        }
+#if DEBUG
+        ESP_LOGI(TAG, "Data not ready, waiting 5ms...");
+#endif
+        delay_ms(5);
+    }
     Reading res{};
     res.temperature = readTemperature();
     res.humidity = readHumidity();
@@ -221,45 +271,15 @@ void Device::readCalibration() {
     calib.dig_H6 = static_cast<std::int32_t>(read8(0xE7));
 }
 
-void Device::setSampling() const {
-    /**
-     * temperature oversampling
-     * 000 = skipped
-     * 001 = x1
-     * 010 = x2
-     * 011 = x4
-     * 100 = x8
-     * 101 and above = x16
-     */
-    const std::uint32_t temp = 2;
-    /**
-     * pressure oversampling
-     * 000 = skipped
-     * 001 = x1
-     * 010 = x2
-     * 011 = x4
-     * 100 = x8
-     * 101 and above = x16
-     */
-    const std::uint32_t pres = 3;
-    /**
-     * device mode
-     * 00       = sleep
-     * 01 or 10 = forced
-     * 11       = normal
-     */
-    const std::uint32_t mode = 3;
-    const std::uint32_t measReg = (temp << 5) | (pres << 2) | mode;
-    /**
-     * humidity oversampling
-     * 000 = skipped
-     * 001 = x1
-     * 010 = x2
-     * 011 = x4
-     * 100 = x8
-     * 101 and above = x16
-     */
-    const std::uint32_t humReg = 2;
+bool Device::setMode(const std::uint32_t mode) const {
+#if DEBUG
+    ESP_LOGI(TAG, "Setting mode to %u", mode);
+#endif
+    const std::uint32_t measReg = (TEMP_OSRS << 5) | (PRES_OSRS << 2) | mode;
+    return write8(REG_CTRL, measReg);
+}
+
+bool Device::setSampling() const {
     /**
      * filter settings
      * 000 = filter off
@@ -282,10 +302,20 @@ void Device::setSampling() const {
      */
     const std::uint32_t dur = 5;
     const std::uint32_t configReg = (dur << 5) | (filter << 2) | 0;
-    write8(REG_CTRL, measReg & ~0x03); // Mode sleep
-    write8(REG_CTRL_HUM, humReg);
-    write8(REG_CONFIG, configReg);
-    write8(REG_CTRL, measReg);
+    bool res = write8(REG_CTRL_HUM, HUM_OSRS);
+    if (!res) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to write humidity register!");
+#endif
+        return false;
+    }
+    res = write8(REG_CONFIG, configReg);
+    if (!res) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to write configuration register!");
+#endif
+    }
+    return res;
 }
 
 float Device::readTemperature() {
@@ -397,11 +427,13 @@ std::uint32_t Device::read24(std::uint8_t reg) const {
            (static_cast<std::uint32_t>(buf[1]) << 8) | buf[2];
 }
 
-void Device::write8(std::uint8_t reg, std::uint8_t value) const {
+bool Device::write8(std::uint8_t reg, std::uint8_t value) const {
     std::uint8_t buf[2] = {reg, value};
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    i2c_master_write_to_device(i2c_port, i2c_addr, buf, 2, pdMS_TO_TICKS(100));
+    const esp_err_t res =
+        i2c_master_write_to_device(i2c_port, i2c_addr, buf, 2, pdMS_TO_TICKS(100));
     xSemaphoreGive(i2cMutex);
+    return res == ESP_OK;
 }
 
 } // namespace BME280

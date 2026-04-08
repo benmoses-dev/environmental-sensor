@@ -55,7 +55,7 @@ bool Device::init() {
 #if DEBUG
     const auto endTime = millis();
     const auto totalTime = endTime - startTime;
-    ESP_LOGI(TAG, "Init took: %u", totalTime);
+    ESP_LOGI(TAG, "Init took: %u, predicted: %u", totalTime, getInitTime());
 #endif
     vTaskDelayUntil(&startInit, pdMS_TO_TICKS(getInitTime()));
     xTaskCreate(scdTask, "SCDTask", 4096, this, 5, &taskHandle);
@@ -96,7 +96,8 @@ void Device::start() {
 #if DEBUG
         const auto eTime = millis();
         const auto totalTime = eTime - sTime;
-        ESP_LOGI(TAG, "Total loop time: %u", totalTime);
+        ESP_LOGI(TAG, "Total loop time: %u, predicted: %u", totalTime,
+                 READING_DURATION_MS);
 #endif
         vTaskDelayUntil(&last, pdMS_TO_TICKS(SINGLE_SHOT_FREQ_MS));
     }

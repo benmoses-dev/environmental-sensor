@@ -46,7 +46,6 @@ class Device : public ISensor {
     TaskHandle_t taskHandle = nullptr;
     Reading reading;
     portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
-    static constexpr std::uint32_t READING_DURATION_MS = 200;
 
     struct Calibration {
         std::int32_t dig_T1;
@@ -83,11 +82,65 @@ class Device : public ISensor {
     static constexpr std::uint8_t REG_PRESS_MSB = 0xF7;
     static constexpr std::uint8_t REG_TEMP_MSB = 0xFA;
     static constexpr std::uint8_t REG_HUM_MSB = 0xFD;
+    static constexpr std::uint8_t STATUS_MEASURING_MASK = 0x08;
+    static constexpr std::uint8_t STATUS_IM_UPDATE_MASK = 0x01;
+    /**
+     * device mode
+     * 00       = sleep
+     * 01 or 10 = forced
+     * 11       = normal
+     */
+    static constexpr std::uint32_t MODE_SLEEP = 0;
+    static constexpr std::uint32_t MODE_FORCED = 1;
+    static constexpr std::uint32_t MODE_NORMAL = 3;
+    // Todo: Map these to keep them together.
+    /**
+     * temperature oversampling
+     * 000 = skipped
+     * 001 = x1
+     * 010 = x2
+     * 011 = x4
+     * 100 = x8
+     * 101 and above = x16
+     */
+    static constexpr std::uint32_t TEMP_OSRS = 2;
+    static constexpr float osrsT = 2.0f;
+    /**
+     * pressure oversampling
+     * 000 = skipped
+     * 001 = x1
+     * 010 = x2
+     * 011 = x4
+     * 100 = x8
+     * 101 and above = x16
+     */
+    static constexpr std::uint32_t PRES_OSRS = 3;
+    static constexpr float osrsP = 4.0f;
+    /**
+     * humidity oversampling
+     * 000 = skipped
+     * 001 = x1
+     * 010 = x2
+     * 011 = x4
+     * 100 = x8
+     * 101 and above = x16
+     */
+    static constexpr std::uint32_t HUM_OSRS = 2;
+    static constexpr float osrsH = 2.0f;
+    /**
+     * Get the measurement duration in ms based on the Bosch datasheet.
+     */
+    static constexpr std::uint32_t MEAS_DUR_MS = static_cast<std::uint32_t>(
+        (1.25 + (2.3 * osrsT) + ((2.3 * osrsP) + 0.575) + ((2.3 * osrsH) + 0.575)) +
+        0.9999f);
+    static constexpr std::uint32_t READING_DURATION_MS = MEAS_DUR_MS + 5;
 
     bool isReadingCalibration() const;
     void readCalibration();
-    void setSampling() const;
+    bool setMode(const std::uint32_t mode) const;
+    bool setSampling() const;
     bool performReading();
+    bool isDataReady() const;
     float readTemperature();
     float readPressure();
     float readHumidity();
@@ -101,7 +154,7 @@ class Device : public ISensor {
     std::uint16_t read16_LE(std::uint8_t reg) const;
     std::int16_t readS16_LE(std::uint8_t reg) const;
     std::uint32_t read24(std::uint8_t reg) const;
-    void write8(std::uint8_t reg, std::uint8_t value) const;
+    bool write8(std::uint8_t reg, std::uint8_t value) const;
 };
 
 } // namespace BME280

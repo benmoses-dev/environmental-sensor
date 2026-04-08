@@ -51,7 +51,7 @@ class Device : public ISensor {
     portMUX_TYPE shutdownMux = portMUX_INITIALIZER_UNLOCKED;
     SemaphoreHandle_t shutdownAck = nullptr;
     TaskHandle_t taskHandle = nullptr;
-    static constexpr std::uint32_t READING_DURATION_MS = 300;
+    static constexpr std::uint32_t READING_DURATION_MS = 200;
 
     Reading reading;
     portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
