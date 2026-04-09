@@ -13,6 +13,9 @@
 #include "scd41.hpp"
 #include "sds011.hpp"
 #include "sensor.hpp"
+#include "sgp40.hpp"
+#include "sgp41.hpp"
+#include "sht45.hpp"
 #include "utils.hpp"
 #include "wifi.hpp"
 #include <algorithm>
@@ -44,6 +47,18 @@ SDS011::Device sds;
 SCD41::Device scd;
 #endif
 
+#if READ_SHT45
+SHT45::Device sht45;
+#endif
+
+#if READ_SGP40
+SGP40::Device sgp40;
+#endif
+
+#if READ_SGP41
+SGP41::Device sgp41;
+#endif
+
 ISensor *sensors[] = {
 #if READ_BME280
     &bme280,
@@ -57,11 +72,21 @@ ISensor *sensors[] = {
 #if READ_SCD41
     &scd,
 #endif
+#if READ_SHT45
+    &sht45,
+#endif
+#if READ_SGP40
+    &sgp40,
+#endif
+#if READ_SGP41
+    &sgp41,
+#endif
 };
 
 constexpr std::size_t SENSOR_COUNT = std::size(sensors);
 
-constexpr bool INITIALISE_I2C = READ_BME280 || READ_BME680 || READ_SCD41;
+constexpr bool INITIALISE_I2C =
+    READ_BME280 || READ_BME680 || READ_SCD41 || READ_SHT45 || READ_SGP40 || READ_SGP41;
 
 constexpr std::uint32_t WIFI_CONNECT_TIME_MS = 10'000;
 
@@ -226,6 +251,20 @@ void publishReadings(const std::uint32_t portDelay = 0) {
             ESP_LOGI(TAG, "CO2 : %.2f ppm", event.val);
 #endif
             mqtt.publish("co2", buf);
+            break;
+
+        case EventType::VOC:
+#if DEBUG
+            ESP_LOGI(TAG, "VOC : %.2f", event.val);
+#endif
+            mqtt.publish("voc", buf);
+            break;
+
+        case EventType::NOX:
+#if DEBUG
+            ESP_LOGI(TAG, "NOX : %.2f", event.val);
+#endif
+            mqtt.publish("nox", buf);
             break;
 
         default:
