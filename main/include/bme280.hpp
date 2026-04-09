@@ -139,9 +139,10 @@ class Device : public ISensor {
     bool setSampling() const;
     bool performReading();
     bool isDataReady() const;
-    float readTemperature();
-    float readPressure();
-    float readHumidity();
+    bool burstRead(std::int32_t &adcP, std::int32_t &adcT, std::int32_t &adcH);
+    float compensateTemperature(const std::int32_t adcT);
+    float compensateHumidity(const std::int32_t adcH);
+    float compensatePressure(const std::int32_t adcP);
     float readAltitude(const float seaLevel);
     float seaLevelForAltitude(const float altitude, const float atmospheric);
     void setTemperatureCompensation(const float adjustment);

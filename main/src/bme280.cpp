@@ -207,15 +207,91 @@ bool Device::performReading() {
         delay_ms(5);
     }
     Reading res{};
-    res.temperature = readTemperature();
-    res.humidity = readHumidity() + HUM_ADJUST;
-    res.pressure = readPressure() + PRES_ADJUST;
+    std::int32_t adcP, adcT, adcH;
+    if (!burstRead(adcP, adcT, adcH)) {
+#if BME280_DEBUG
+        ESP_LOGE(TAG, "Failed to burst-read data!");
+#endif
+        return false;
+    }
+    /**
+     * Process temperature first to get the correct adjustment.
+     */
+    res.temperature = compensateTemperature(adcT);
+    res.humidity = compensateHumidity(adcH) + HUM_ADJUST;
+    res.pressure = compensatePressure(adcP) + PRES_ADJUST;
     res.tval = time(NULL);
     res.valid = true;
     taskENTER_CRITICAL(&readingMux);
     reading = res;
     taskEXIT_CRITICAL(&readingMux);
     return true;
+}
+
+bool Device::burstRead(std::int32_t &adcP, std::int32_t &adcT, std::int32_t &adcH) {
+    std::uint8_t data[8];
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
+    const bool res = write8read(REG_PRESS_MSB, data, 8, i2c_port, i2c_addr);
+    xSemaphoreGive(i2cMutex);
+    if (!res) {
+        return false;
+    }
+    adcP = (static_cast<std::int32_t>(data[0]) << 12) |
+           (static_cast<std::int32_t>(data[1]) << 4) |
+           (static_cast<std::int32_t>(data[2]) >> 4);
+    adcT = (static_cast<std::int32_t>(data[3]) << 12) |
+           (static_cast<std::int32_t>(data[4]) << 4) |
+           (static_cast<std::int32_t>(data[5]) >> 4);
+    adcH = (static_cast<std::int32_t>(data[6]) << 8) | static_cast<std::int32_t>(data[7]);
+    return true;
+}
+
+float Device::compensateTemperature(const std::int32_t adcT) {
+    std::int32_t var1 = (adcT >> 3) - (calib.dig_T1 << 1);
+    var1 = (var1 * calib.dig_T2) >> 11;
+    std::int32_t var2 = (adcT >> 4) - (calib.dig_T1);
+    var2 = (((var2 * var2) >> 12) * calib.dig_T3) >> 14;
+    t_fine = var1 + var2 + t_fine_adjust;
+    const std::int32_t T = (t_fine * 5 + 128) >> 8;
+    return static_cast<float>(T) / 100.0f;
+}
+
+float Device::compensateHumidity(const std::int32_t adcH) {
+    std::int32_t var1 = t_fine - 76800;
+    std::int32_t var2 = adcH << 14;
+    std::int32_t var3 = calib.dig_H4 << 20;
+    std::int32_t var4 = calib.dig_H5 * var1;
+    std::int32_t var5 = (var2 - var3 - var4 + 16384) >> 15;
+    var2 = (var1 * calib.dig_H6) >> 10;
+    var3 = (var1 * calib.dig_H3) >> 11;
+    var4 = ((var2 * (var3 + 32768)) >> 10) + 2097152;
+    var2 = ((var4 * calib.dig_H2) + 8192) >> 14;
+    var3 = var5 * var2;
+    var4 = ((var3 >> 15) * (var3 >> 15)) >> 7;
+    var5 = var3 - ((var4 * calib.dig_H1) >> 4);
+    var5 = var5 < 0 ? 0 : var5;
+    var5 = var5 > 419430400 ? 419430400 : var5;
+    var5 = var5 >> 12;
+    return static_cast<float>(var5) / 1024.0f;
+}
+
+float Device::compensatePressure(const std::int32_t adcP) {
+    std::int64_t var1 = static_cast<std::int64_t>(t_fine) - 128000;
+    std::int64_t var2 = var1 * var1 * calib.dig_P6;
+    var2 = var2 + ((var1 * calib.dig_P5) << 17);
+    var2 = var2 + ((calib.dig_P4) << 35);
+    var1 = ((var1 * var1 * calib.dig_P3) >> 8) + ((var1 * calib.dig_P2) << 12);
+    std::int64_t var3 = static_cast<std::int64_t>(1) << 47;
+    var1 = ((var3 + var1) * calib.dig_P1) >> 33;
+    if (var1 == 0) {
+        return 0;
+    }
+    std::int64_t p = 1048576 - adcP;
+    p = (((p << 31) - var2) * 3125) / var1;
+    var1 = (calib.dig_P9 * (p >> 13) * (p >> 13)) >> 25;
+    var2 = (calib.dig_P8 * p) >> 19;
+    p = ((p + var1 + var2) >> 8) + (calib.dig_P7 << 4);
+    return static_cast<float>(p) / 256.0f;
 }
 
 bool Device::isReadingCalibration() const {
@@ -310,65 +386,6 @@ bool Device::setSampling() const {
     return res;
 }
 
-float Device::readTemperature() {
-    xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    std::int32_t adc_T = write8read24(REG_TEMP_MSB, i2c_port, i2c_addr) >> 4;
-    xSemaphoreGive(i2cMutex);
-    std::int32_t var1 = (adc_T >> 3) - (calib.dig_T1 << 1);
-    var1 = (var1 * calib.dig_T2) >> 11;
-    std::int32_t var2 = (adc_T >> 4) - (calib.dig_T1);
-    var2 = (((var2 * var2) >> 12) * calib.dig_T3) >> 14;
-    t_fine = var1 + var2 + t_fine_adjust;
-    const std::int32_t T = (t_fine * 5 + 128) >> 8;
-    return static_cast<float>(T) / 100.0f;
-}
-
-float Device::readPressure() {
-    readTemperature(); // must compute t_fine
-    xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    std::int32_t adc_P = write8read24(REG_PRESS_MSB, i2c_port, i2c_addr) >> 4;
-    xSemaphoreGive(i2cMutex);
-    std::int64_t var1 = static_cast<std::int64_t>(t_fine) - 128000;
-    std::int64_t var2 = var1 * var1 * calib.dig_P6;
-    var2 = var2 + ((var1 * calib.dig_P5) << 17);
-    var2 = var2 + ((calib.dig_P4) << 35);
-    var1 = ((var1 * var1 * calib.dig_P3) >> 8) + ((var1 * calib.dig_P2) << 12);
-    std::int64_t var3 = static_cast<std::int64_t>(1) << 47;
-    var1 = ((var3 + var1) * calib.dig_P1) >> 33;
-    if (var1 == 0) {
-        return 0; // avoid div by zero
-    }
-    std::int64_t p = 1048576 - adc_P;
-    p = (((p << 31) - var2) * 3125) / var1;
-    var1 = (calib.dig_P9 * (p >> 13) * (p >> 13)) >> 25;
-    var2 = (calib.dig_P8 * p) >> 19;
-    p = ((p + var1 + var2) >> 8) + (calib.dig_P7 << 4);
-    return static_cast<float>(p) / 256.0f;
-}
-
-float Device::readHumidity() {
-    readTemperature(); // must compute t_fine
-    xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    std::int32_t adc_H = write8read16(REG_HUM_MSB, i2c_port, i2c_addr);
-    xSemaphoreGive(i2cMutex);
-    std::int32_t var1 = t_fine - 76800;
-    std::int32_t var2 = adc_H << 14;
-    std::int32_t var3 = calib.dig_H4 << 20;
-    std::int32_t var4 = calib.dig_H5 * var1;
-    std::int32_t var5 = (var2 - var3 - var4 + 16384) >> 15;
-    var2 = (var1 * calib.dig_H6) >> 10;
-    var3 = (var1 * calib.dig_H3) >> 11;
-    var4 = ((var2 * (var3 + 32768)) >> 10) + 2097152;
-    var2 = ((var4 * calib.dig_H2) + 8192) >> 14;
-    var3 = var5 * var2;
-    var4 = ((var3 >> 15) * (var3 >> 15)) >> 7;
-    var5 = var3 - ((var4 * calib.dig_H1) >> 4);
-    var5 = var5 < 0 ? 0 : var5;
-    var5 = var5 > 419430400 ? 419430400 : var5;
-    var5 = var5 >> 12;
-    return static_cast<float>(var5) / 1024.0f;
-}
-
 void Device::setTemperatureCompensation(const float adjustment) {
     t_fine_adjust = (static_cast<std::int32_t>(adjustment * 100) << 8) / 5;
 }
@@ -377,13 +394,13 @@ float Device::getTemperatureCompensation() const {
     return static_cast<float>((t_fine_adjust * 5) >> 8) / 100.0f;
 }
 
-float Device::readAltitude(const float seaLevelPressure) {
-    const float atmospheric = readPressure() / 100.0F;
-    return 44330.0 * (1.0 - pow(atmospheric / seaLevelPressure, 0.1903));
-}
-
-float Device::seaLevelForAltitude(const float altitude, const float atmospheric) {
-    return atmospheric / pow(1.0 - (altitude / 44330.0), 5.255);
-}
+// float Device::readAltitude(const float seaLevelPressure) {
+//     const float atmospheric = readPressure() / 100.0F;
+//     return 44330.0 * (1.0 - pow(atmospheric / seaLevelPressure, 0.1903));
+// }
+//
+// float Device::seaLevelForAltitude(const float altitude, const float atmospheric) {
+//     return atmospheric / pow(1.0 - (altitude / 44330.0), 5.255);
+// }
 
 } // namespace BME280
