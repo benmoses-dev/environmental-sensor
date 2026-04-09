@@ -23,6 +23,10 @@
 #define READ_BME680 1
 #define READ_SDS011 1
 #define READ_SCD41 0
+#define READ_SHT45 0
+#define READ_SGP40 0
+#define READ_SGP41 0
+#define READ_SPS30 0
 
 /**
  * Debugging.
@@ -31,6 +35,10 @@
 #define BME680_DEBUG 0
 #define SDS011_DEBUG 0
 #define SCD41_DEBUG 0
+#define SHT45_DEBUG 0
+#define SGP40_DEBUG 0
+#define SGP41_DEBUG 0
+#define SPS30_DEBUG 0
 
 /**
  * I2C configuration.
@@ -44,7 +52,13 @@ inline constexpr std::int32_t I2C_MASTER_SCL_IO = 23;
  * BME280 configuration.
  */
 inline constexpr std::uint8_t BME280_ADDR = 0x76;
-inline constexpr std::uint32_t BME280_READ_FREQ_MS = 1'000;
+inline constexpr std::uint32_t BME280_READ_FREQ_MS = 60'000;
+
+/**
+ * SHT45 configuration.
+ */
+inline constexpr std::uint8_t SHT45_ADDR = 0x44;
+inline constexpr std::uint32_t SHT45_READ_FREQ_MS = 60'000;
 
 /**
  * BME680 configuration.
@@ -61,7 +75,7 @@ inline constexpr std::uint32_t BME680_HEATER_FREQ_MS = 60'000;
  * SCD41 configuration.
  */
 inline constexpr std::uint8_t SCD41_ADDR = 0x62;
-inline constexpr std::uint32_t SCD41_SINGLE_SHOT_FREQ_MS = 5'010; // Must be >= 5'010
+inline constexpr std::uint32_t SCD41_SINGLE_SHOT_FREQ_MS = 10'000; // Must be >= 5'010
 
 /**
  * UART/SDS011 configuration.
