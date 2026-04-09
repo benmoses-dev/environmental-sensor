@@ -184,8 +184,8 @@ bool Device::performReading() {
     const std::uint16_t humRaw = (buffer[3] << 8) | buffer[4];
     const float humNorm = static_cast<float>(humRaw) / 65535.0f;
     const float humidity = -6.0f + 125.0f * humNorm;
-    r.temperature = temperature;
-    r.humidity = std::min(std::max(humidity, 0.0f), 100.0f);
+    r.temperature = temperature + TEMP_ADJUST;
+    r.humidity = std::min(std::max(humidity + HUM_ADJUST, 0.0f), 100.0f);
     r.read = false;
     r.valid = true;
     taskENTER_CRITICAL(&readingMux);

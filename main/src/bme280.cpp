@@ -76,6 +76,11 @@ bool Device::init() {
 #endif
         return false;
     }
+#if BME280_DEBUG
+    ESP_LOGI(TAG, "Setting temperature adjustment to %.2f from %.2f", TEMP_ADJUST,
+             getTemperatureCompensation());
+#endif
+    setTemperatureCompensation(TEMP_ADJUST);
     delay_ms(100);
     ESP_LOGI(TAG, "BME280 initialised successfully!");
     initialised = true;
@@ -142,9 +147,9 @@ void Device::logReadings(QueueHandle_t q) {
 #endif
         return;
     }
-    const Event tEvent = {res.temperature + TEMP_ADJUST, res.tval, EventType::TEMP};
-    const Event hEvent = {res.humidity + HUM_ADJUST, res.tval, EventType::HUM};
-    const Event pEvent = {res.pressure + PRES_ADJUST, res.tval, EventType::PRES};
+    const Event tEvent = {res.temperature, res.tval, EventType::TEMP};
+    const Event hEvent = {res.humidity, res.tval, EventType::HUM};
+    const Event pEvent = {res.pressure, res.tval, EventType::PRES};
     xQueueSend(q, &tEvent, portMAX_DELAY);
     xQueueSend(q, &hEvent, portMAX_DELAY);
     xQueueSend(q, &pEvent, portMAX_DELAY);
@@ -203,8 +208,8 @@ bool Device::performReading() {
     }
     Reading res{};
     res.temperature = readTemperature();
-    res.humidity = readHumidity();
-    res.pressure = readPressure();
+    res.humidity = readHumidity() + HUM_ADJUST;
+    res.pressure = readPressure() + PRES_ADJUST;
     res.tval = time(NULL);
     res.valid = true;
     taskENTER_CRITICAL(&readingMux);

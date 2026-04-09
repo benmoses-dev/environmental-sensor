@@ -174,10 +174,10 @@ void Device::logReadings(QueueHandle_t q) {
 #endif
         return;
     }
-    const Event tEvent = {res.temperature + TEMP_ADJUST, res.tval, EventType::TEMP};
-    const Event hEvent = {res.humidity + HUM_ADJUST, res.tval, EventType::HUM};
-    const Event pEvent = {res.pressure + PRES_ADJUST, res.tval, EventType::PRES};
-    const Event gEvent = {res.gasResistance + GAS_ADJUST, res.tval, EventType::GAS};
+    const Event tEvent = {res.temperature, res.tval, EventType::TEMP};
+    const Event hEvent = {res.humidity, res.tval, EventType::HUM};
+    const Event pEvent = {res.pressure, res.tval, EventType::PRES};
+    const Event gEvent = {res.gasResistance, res.tval, EventType::GAS};
     xQueueSend(q, &tEvent, portMAX_DELAY);
     xQueueSend(q, &hEvent, portMAX_DELAY);
     xQueueSend(q, &pEvent, portMAX_DELAY);
@@ -258,9 +258,9 @@ bool Device::performReading() {
         return false;
     }
     Reading r{};
-    r.temperature = data.temperature;
-    r.humidity = data.humidity;
-    r.pressure = data.pressure;
+    r.temperature = data.temperature + TEMP_ADJUST;
+    r.humidity = data.humidity + HUM_ADJUST;
+    r.pressure = data.pressure + PRES_ADJUST;
     if ((data.status & BME68X_HEAT_STAB_MSK) && (data.status & BME68X_GASM_VALID_MSK)) {
 #if BME680_DEBUG
         ESP_LOGI(TAG, "Gas and Heat ready. Heat: %d, Gas: %d, Status: %u",

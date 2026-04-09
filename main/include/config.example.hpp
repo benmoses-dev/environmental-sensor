@@ -104,7 +104,6 @@ inline constexpr std::uint32_t SDS011_READING_FREQ_MS = 5'000;
 inline constexpr float TEMP_ADJUST = 0.0f;
 inline constexpr float HUM_ADJUST = 0.0f;
 inline constexpr float PRES_ADJUST = 0.0f;
-inline constexpr float GAS_ADJUST = 0.0f;
 
 /**
  * Timing configuration.

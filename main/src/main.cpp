@@ -343,6 +343,8 @@ extern "C" void app_main() {
     }
 #if DEBUG
     ESP_LOGI(TAG, "Initialised %d Sensors...", count);
+    ESP_LOGI(TAG, "Adjustments: temp = %.2f, hum = %.2f, pres = %.2f", TEMP_ADJUST,
+             HUM_ADJUST, PRES_ADJUST);
 #endif
 #if DEBUG
     ESP_LOGI(TAG, "Waiting until end of warmup period...");
