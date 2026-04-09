@@ -28,9 +28,7 @@ class Device : public ISensor {
     bool init() override;
     std::uint32_t getInitTime() override { return 130; };
     std::uint32_t getDataReadyTime() override { return READING_DURATION_MS; };
-    std::uint32_t getLoopTime() override {
-        return BME280_READ_FREQ_MS;
-    }; // Todo: forced mode.
+    std::uint32_t getLoopTime() override { return BME280_READ_FREQ_MS; };
     void logReadings(QueueHandle_t q) override;
     bool sleep() override;
     bool isInitialised() override;
@@ -148,13 +146,6 @@ class Device : public ISensor {
     float seaLevelForAltitude(const float altitude, const float atmospheric);
     void setTemperatureCompensation(const float adjustment);
     float getTemperatureCompensation() const;
-    std::uint8_t read8(std::uint8_t reg) const;
-    std::uint16_t read16(std::uint8_t reg) const;
-    std::int16_t readS16(std::uint8_t reg) const;
-    std::uint16_t read16_LE(std::uint8_t reg) const;
-    std::int16_t readS16_LE(std::uint8_t reg) const;
-    std::uint32_t read24(std::uint8_t reg) const;
-    bool write8(std::uint8_t reg, std::uint8_t value) const;
 };
 
 } // namespace BME280

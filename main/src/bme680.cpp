@@ -387,10 +387,9 @@ BME68X_INTF_RET_TYPE Device::read(std::uint8_t regAddr, std::uint8_t *data,
     }
     Device *dev = static_cast<Device *>(interface);
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    const esp_err_t err = i2c_master_write_read_device(
-        dev->i2c_port, dev->i2c_addr, &regAddr, 1, data, len, pdMS_TO_TICKS(100));
+    const bool res = write8read(regAddr, data, len, dev->i2c_port, dev->i2c_addr);
     xSemaphoreGive(i2cMutex);
-    return (err == ESP_OK) ? BME68X_OK : -1;
+    return (res) ? BME68X_OK : -1;
 }
 
 BME68X_INTF_RET_TYPE Device::write(std::uint8_t regAddr, const std::uint8_t *data,
@@ -403,10 +402,9 @@ BME68X_INTF_RET_TYPE Device::write(std::uint8_t regAddr, const std::uint8_t *dat
     memcpy(&buffer[1], data, len);
     Device *dev = static_cast<Device *>(interface);
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    const esp_err_t err = i2c_master_write_to_device(dev->i2c_port, dev->i2c_addr, buffer,
-                                                     len + 1, pdMS_TO_TICKS(100));
+    const bool res = writeBytes(buffer, len + 1, dev->i2c_port, dev->i2c_addr);
     xSemaphoreGive(i2cMutex);
-    return (err == ESP_OK) ? BME68X_OK : -1;
+    return (res) ? BME68X_OK : -1;
 }
 
 } // namespace BME680

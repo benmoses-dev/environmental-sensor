@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
+#include "hal/i2c_types.h"
 
 extern SemaphoreHandle_t i2cMutex;
 
@@ -27,6 +28,100 @@ inline bool initialiseI2C(const i2c_port_t port) {
         return false;
     }
     return true;
+}
+
+inline bool readBytes(std::uint8_t *buffer, const std::size_t bytes,
+                      const i2c_port_t port, const std::uint8_t addr) {
+    const esp_err_t res =
+        i2c_master_read_from_device(port, addr, buffer, bytes, pdMS_TO_TICKS(100));
+    return res == ESP_OK;
+}
+
+inline bool writeBytes(const std::uint8_t *data, const std::size_t bytes,
+                       const i2c_port_t port, const std::uint8_t addr) {
+    const esp_err_t res =
+        i2c_master_write_to_device(port, addr, data, bytes, pdMS_TO_TICKS(100));
+    return res == ESP_OK;
+}
+
+inline bool writeBytesThenRead(const std::uint8_t *in, const std::size_t inBytes,
+                               std::uint8_t *buffer, const std::size_t outBytes,
+                               const i2c_port_t port, const std::uint8_t addr) {
+    const esp_err_t res = i2c_master_write_read_device(port, addr, in, inBytes, buffer,
+                                                       outBytes, pdMS_TO_TICKS(100));
+    return res == ESP_OK;
+}
+
+inline bool write8(const std::uint8_t value, const i2c_port_t port,
+                   const std::uint8_t addr) {
+    return writeBytes(&value, 1, port, addr);
+}
+
+inline bool write16(const std::uint16_t value, const i2c_port_t port,
+                    const std::uint8_t addr) {
+    std::uint8_t data[2];
+    data[0] = static_cast<std::uint8_t>(value >> 8);
+    data[1] = static_cast<std::uint8_t>(value & 0xFF);
+    return writeBytes(data, 2, port, addr);
+}
+
+inline bool write8read(const std::uint8_t value, std::uint8_t *buffer,
+                       const std::size_t bytes, const i2c_port_t port,
+                       const std::uint8_t addr) {
+    return writeBytesThenRead(&value, 1, buffer, bytes, port, addr);
+}
+
+inline bool write16read(const std::uint16_t value, std::uint8_t *buffer,
+                        const std::size_t bytes, const i2c_port_t port,
+                        const std::uint8_t addr) {
+    std::uint8_t data[2];
+    data[0] = static_cast<std::uint8_t>(value >> 8);
+    data[1] = static_cast<std::uint8_t>(value & 0xFF);
+    return writeBytesThenRead(data, 2, buffer, bytes, port, addr);
+}
+
+inline std::uint8_t write8read8(const std::uint8_t value, const i2c_port_t port,
+                                const std::uint8_t addr) {
+    std::uint8_t buffer[1];
+    write8read(value, buffer, 1, port, addr);
+    return buffer[0];
+}
+
+inline std::uint16_t write8read16(const std::uint8_t value, const i2c_port_t port,
+                                  const std::uint8_t addr) {
+    std::uint8_t buffer[2];
+    write8read(value, buffer, 2, port, addr);
+    return (static_cast<std::uint16_t>(buffer[0]) << 8) | buffer[1];
+}
+
+inline std::int16_t write8readS16(const std::uint8_t value, const i2c_port_t port,
+                                  const std::uint8_t addr) {
+    return static_cast<std::int16_t>(write8read16(value, port, addr));
+}
+
+inline std::uint16_t write8read16LE(const std::uint8_t value, const i2c_port_t port,
+                                    const std::uint8_t addr) {
+    std::uint16_t val = write8read16(value, port, addr);
+    return (val >> 8) | (val << 8);
+}
+
+inline std::int16_t write8readS16LE(const std::uint8_t value, const i2c_port_t port,
+                                    const std::uint8_t addr) {
+    return static_cast<std::int16_t>(write8read16LE(value, port, addr));
+}
+
+inline std::uint32_t write8read24(const std::uint8_t value, const i2c_port_t port,
+                                  const std::uint8_t addr) {
+    std::uint8_t buffer[3];
+    write8read(value, buffer, 3, port, addr);
+    return (static_cast<std::uint32_t>(buffer[0]) << 16) |
+           (static_cast<std::uint32_t>(buffer[1]) << 8) | buffer[2];
+}
+
+inline bool write8WithArg(const std::uint8_t reg, const std::uint8_t arg,
+                          const i2c_port_t port, const std::uint8_t addr) {
+    std::uint8_t data[2] = {reg, arg};
+    return writeBytes(data, 2, port, addr);
 }
 
 inline bool scanI2C(const i2c_port_t port) {

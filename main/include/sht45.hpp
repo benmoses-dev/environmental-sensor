@@ -44,11 +44,23 @@ class Device : public ISensor {
     SemaphoreHandle_t shutdownAck = nullptr;
     TaskHandle_t taskHandle = nullptr;
     static constexpr std::uint32_t READING_DURATION_MS = 200;
+    static constexpr std::uint8_t NO_HEAT_HIGH_PRECISION = 0xFD;
+    static constexpr std::uint8_t NO_HEAT_MED_PRECISION = 0xF6;
+    static constexpr std::uint8_t NO_HEAT_LOW_PRECISION = 0xE0;
+    static constexpr std::uint8_t HIGH_HEAT_1_S = 0x39;
+    static constexpr std::uint8_t HIGH_HEAT_100_MS = 0x32;
+    static constexpr std::uint8_t MED_HEAT_1_S = 0x2F;
+    static constexpr std::uint8_t MED_HEAT_100_MS = 0x24;
+    static constexpr std::uint8_t LOW_HEAT_1_S = 0x1E;
+    static constexpr std::uint8_t LOW_HEAT_100_MS = 0x15;
+    static constexpr std::uint8_t READ_SERIAL = 0x89;
+    static constexpr std::uint8_t SOFT_RESET = 0x94;
 
     Reading reading;
     portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
 
     bool performReading();
+    std::uint8_t getCRC8(const std::uint8_t *data);
 };
 
 } // namespace SHT45

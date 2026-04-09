@@ -57,12 +57,9 @@ class Device : public ISensor {
     bool stopPeriodicMeasurement();
     bool powerDown();
     bool wake();
-    bool readBytes(std::uint8_t *buffer, std::size_t len);
     bool readMeasurement(std::uint8_t *buffer);
     bool isDataReady();
     std::uint8_t getCRC8(const std::uint8_t *data);
-    bool write16(std::uint16_t value);
-    bool write16WithArg(const std::uint16_t cmd, const std::uint16_t arg);
 
     static constexpr std::uint16_t CMD_START_PERIODIC_MEASUREMENT = 0x21B1;
     static constexpr std::uint16_t CMD_STOP_PERIODIC_MEASUREMENT = 0x3F86;

@@ -194,21 +194,21 @@ bool Device::getReading() {
 
 bool Device::startPeriodicMeasurement() {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    const bool res = write16(CMD_START_PERIODIC_MEASUREMENT);
+    const bool res = write16(CMD_START_PERIODIC_MEASUREMENT, i2c_port, i2c_addr);
     xSemaphoreGive(i2cMutex);
     return res;
 }
 
 bool Device::startLowPowerPeriodicMeasurement() {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    const bool res = write16(CMD_START_LP_PERIODIC_MEASUREMENT);
+    const bool res = write16(CMD_START_LP_PERIODIC_MEASUREMENT, i2c_port, i2c_addr);
     xSemaphoreGive(i2cMutex);
     return res;
 }
 
 bool Device::singleShot() {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    const bool res = write16(CMD_MEASURE_SH);
+    const bool res = write16(CMD_MEASURE_SH, i2c_port, i2c_addr);
     xSemaphoreGive(i2cMutex);
     if (!res) {
         return false;
@@ -219,7 +219,7 @@ bool Device::singleShot() {
 
 bool Device::singleShotRHT() {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    const bool res = write16(CMD_MEASURE_SH_RHT);
+    const bool res = write16(CMD_MEASURE_SH_RHT, i2c_port, i2c_addr);
     xSemaphoreGive(i2cMutex);
     if (!res) {
         return false;
@@ -230,7 +230,7 @@ bool Device::singleShotRHT() {
 
 bool Device::stopPeriodicMeasurement() {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    const bool res = write16(CMD_STOP_PERIODIC_MEASUREMENT);
+    const bool res = write16(CMD_STOP_PERIODIC_MEASUREMENT, i2c_port, i2c_addr);
     xSemaphoreGive(i2cMutex);
     delay_ms(500);
     return res;
@@ -238,7 +238,7 @@ bool Device::stopPeriodicMeasurement() {
 
 bool Device::powerDown() {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    const bool res = write16(CMD_POWER_DOWN);
+    const bool res = write16(CMD_POWER_DOWN, i2c_port, i2c_addr);
     xSemaphoreGive(i2cMutex);
     delay_ms(1);
     return res;
@@ -246,7 +246,7 @@ bool Device::powerDown() {
 
 bool Device::wake() {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    const bool res = write16(CMD_WAKE_UP);
+    const bool res = write16(CMD_WAKE_UP, i2c_port, i2c_addr);
     xSemaphoreGive(i2cMutex);
     delay_ms(30);
     return res;
@@ -254,7 +254,7 @@ bool Device::wake() {
 
 bool Device::readMeasurement(std::uint8_t *buffer) {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    if (!write16(CMD_READ_MEASUREMENT)) {
+    if (!write16(CMD_READ_MEASUREMENT, i2c_port, i2c_addr)) {
 #if SCD41_DEBUG
         ESP_LOGE(TAG, "Failed to send read measurement command");
 #endif
@@ -262,7 +262,7 @@ bool Device::readMeasurement(std::uint8_t *buffer) {
         return false;
     }
     delay_ms(1);
-    const bool res = readBytes(buffer, 9);
+    const bool res = readBytes(buffer, 9, i2c_port, i2c_addr);
     xSemaphoreGive(i2cMutex);
     if (!res) {
 #if SCD41_DEBUG
@@ -283,7 +283,7 @@ bool Device::readMeasurement(std::uint8_t *buffer) {
 
 bool Device::isDataReady() {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
-    if (!write16(CMD_GET_DATA_READY_STATUS)) {
+    if (!write16(CMD_GET_DATA_READY_STATUS, i2c_port, i2c_addr)) {
 #if SCD41_DEBUG
         ESP_LOGE(TAG, "Failed to send data ready status command");
 #endif
@@ -292,7 +292,7 @@ bool Device::isDataReady() {
     }
     delay_ms(1);
     std::uint8_t raw[3];
-    const bool res = readBytes(raw, 3);
+    const bool res = readBytes(raw, 3, i2c_port, i2c_addr);
     xSemaphoreGive(i2cMutex);
     if (!res) {
 #if SCD41_DEBUG
@@ -319,33 +319,6 @@ std::uint8_t Device::getCRC8(const std::uint8_t *data) {
         }
     }
     return crc;
-}
-
-bool Device::write16(const std::uint16_t value) {
-    std::uint8_t data[2];
-    data[0] = value >> 8;
-    data[1] = value & 0xFF;
-    const esp_err_t res =
-        i2c_master_write_to_device(i2c_port, i2c_addr, data, 2, pdMS_TO_TICKS(100));
-    return res == ESP_OK;
-}
-
-bool Device::write16WithArg(const std::uint16_t cmd, const std::uint16_t arg) {
-    std::uint8_t data[5];
-    data[0] = cmd >> 8;
-    data[1] = cmd & 0xFF;
-    data[2] = arg >> 8;
-    data[3] = arg & 0xFF;
-    data[4] = getCRC8(&data[2]);
-    const esp_err_t res =
-        i2c_master_write_to_device(i2c_port, i2c_addr, data, 5, pdMS_TO_TICKS(100));
-    return res == ESP_OK;
-}
-
-bool Device::readBytes(std::uint8_t *buffer, std::size_t len) {
-    const esp_err_t res =
-        i2c_master_read_from_device(i2c_port, i2c_addr, buffer, len, pdMS_TO_TICKS(100));
-    return res == ESP_OK;
 }
 
 } // namespace SCD41
