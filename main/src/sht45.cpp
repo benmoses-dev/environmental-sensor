@@ -44,10 +44,15 @@ bool Device::init() {
     const auto startTime = millis();
     ESP_LOGI(TAG, "Initialising SHT45...");
 #endif
+    if (!reset()) {
 #if SHT45_DEBUG
-    ESP_LOGI(TAG, "Configuring SHT45...");
+        ESP_LOGE(TAG, "Failed to soft reset device!");
 #endif
-    ESP_LOGI(TAG, "SHT45 configured successfully!");
+        return false;
+    }
+#if SHT45_DEBUG
+    ESP_LOGI(TAG, "SHT45 initialised successfully!");
+#endif
     initialised = true;
 #if SHT45_DEBUG
     const auto endTime = millis();
@@ -134,12 +139,55 @@ bool Device::sleep() {
     return true;
 }
 
+bool Device::reset() {
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
+    const bool res = write8(SOFT_RESET, i2c_port, i2c_addr);
+    xSemaphoreGive(i2cMutex);
+    if (!res) {
+        return false;
+    }
+    delay_ms(1);
+    return true;
+}
+
 bool Device::performReading() {
     Reading r{};
     r.valid = false;
-    // Take reading.
+    xSemaphoreTake(i2cMutex, portMAX_DELAY);
+    if (!write8(NO_HEAT_HIGH_PRECISION, i2c_port, i2c_addr)) {
+#if SHT45_DEBUG
+        ESP_LOGE(TAG, "Failed to start reading!");
+#endif
+        xSemaphoreGive(i2cMutex);
+        return false;
+    }
+    delay_ms(10);
+    std::uint8_t buffer[6];
+    const bool res = readBytes(buffer, 6, i2c_port, i2c_addr);
+    xSemaphoreGive(i2cMutex);
+    if (!res) {
+#if SHT45_DEBUG
+        ESP_LOGE(TAG, "Failed to read response!");
+#endif
+        return false;
+    }
     r.tval = time(NULL);
+    if (buffer[2] != getCRC8(buffer) || buffer[5] != getCRC8(buffer + 3)) {
+#if SHT45_DEBUG
+        ESP_LOGE(TAG, "CRC checksum failed!");
+#endif
+        return false;
+    }
+    const std::uint16_t tempRaw = (buffer[0] << 8) | buffer[1];
+    const float tempNorm = static_cast<float>(tempRaw) / 65535.0f;
+    const float temperature = (175.0 * tempNorm) - 45.0;
+    const std::uint16_t humRaw = (buffer[3] << 8) | buffer[4];
+    const float humNorm = static_cast<float>(humRaw) / 65535.0f;
+    const float humidity = -6.0f + 125.0f * humNorm;
+    r.temperature = temperature;
+    r.humidity = std::min(std::max(humidity, 0.0f), 100.0f);
     r.read = false;
+    r.valid = true;
     taskENTER_CRITICAL(&readingMux);
     reading = r;
     taskEXIT_CRITICAL(&readingMux);

@@ -27,7 +27,7 @@ class Device : public ISensor {
     ~Device();
 
     bool init() override;
-    std::uint32_t getInitTime() override { return 200; };
+    std::uint32_t getInitTime() override { return 5; };
     std::uint32_t getDataReadyTime() override { return READING_DURATION_MS; };
     std::uint32_t getLoopTime() override { return SHT45_READ_FREQ_MS; };
     void logReadings(QueueHandle_t q) override;
@@ -43,7 +43,7 @@ class Device : public ISensor {
     portMUX_TYPE shutdownMux = portMUX_INITIALIZER_UNLOCKED;
     SemaphoreHandle_t shutdownAck = nullptr;
     TaskHandle_t taskHandle = nullptr;
-    static constexpr std::uint32_t READING_DURATION_MS = 200;
+    static constexpr std::uint32_t READING_DURATION_MS = 20;
     static constexpr std::uint8_t NO_HEAT_HIGH_PRECISION = 0xFD;
     static constexpr std::uint8_t NO_HEAT_MED_PRECISION = 0xF6;
     static constexpr std::uint8_t NO_HEAT_LOW_PRECISION = 0xE0;
@@ -60,7 +60,7 @@ class Device : public ISensor {
     portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
 
     bool performReading();
-    std::uint8_t getCRC8(const std::uint8_t *data);
+    bool reset();
 };
 
 } // namespace SHT45

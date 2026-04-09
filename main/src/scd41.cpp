@@ -310,15 +310,4 @@ bool Device::isDataReady() {
     return (status & 0x07FF) != 0; // lower 11 bits non-zero
 }
 
-std::uint8_t Device::getCRC8(const std::uint8_t *data) {
-    std::uint8_t crc = 0xFF;
-    for (std::uint32_t i = 0; i < 2; i++) {
-        crc ^= data[i];
-        for (std::uint32_t j = 0; j < 8; j++) {
-            crc = (crc & 0x80) ? (crc << 1) ^ 0x31 : crc << 1;
-        }
-    }
-    return crc;
-}
-
 } // namespace SCD41

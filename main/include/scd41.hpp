@@ -59,7 +59,6 @@ class Device : public ISensor {
     bool wake();
     bool readMeasurement(std::uint8_t *buffer);
     bool isDataReady();
-    std::uint8_t getCRC8(const std::uint8_t *data);
 
     static constexpr std::uint16_t CMD_START_PERIODIC_MEASUREMENT = 0x21B1;
     static constexpr std::uint16_t CMD_STOP_PERIODIC_MEASUREMENT = 0x3F86;
