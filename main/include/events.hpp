@@ -10,6 +10,8 @@ enum EventType {
     PM2_5,
     PM10,
     CO2,
+    VOC,
+    NOX,
 };
 
 struct Event {

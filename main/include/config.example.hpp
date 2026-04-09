@@ -61,6 +61,18 @@ inline constexpr std::uint8_t SHT45_ADDR = 0x44;
 inline constexpr std::uint32_t SHT45_READ_FREQ_MS = 60'000;
 
 /**
+ * SGP40 configuration.
+ */
+inline constexpr std::uint8_t SGP40_ADDR = 0x59;
+inline constexpr std::uint32_t SGP40_READ_FREQ_MS = 60'000;
+
+/**
+ * SGP41 configuration.
+ */
+inline constexpr std::uint8_t SGP41_ADDR = 0x59;
+inline constexpr std::uint32_t SGP41_READ_FREQ_MS = 60'000;
+
+/**
  * BME680 configuration.
  */
 inline constexpr std::uint8_t BME680_ADDR = 0x77;
@@ -89,10 +101,10 @@ inline constexpr std::uint32_t SDS011_READING_FREQ_MS = 5'000;
 /**
  * Sensor adjustments.
  */
-inline constexpr float TEMP_ADJUST = 0.0;
-inline constexpr float HUM_ADJUST = 0.0;
-inline constexpr float PRES_ADJUST = 0.0;
-inline constexpr float GAS_ADJUST = 0.0;
+inline constexpr float TEMP_ADJUST = 0.0f;
+inline constexpr float HUM_ADJUST = 0.0f;
+inline constexpr float PRES_ADJUST = 0.0f;
+inline constexpr float GAS_ADJUST = 0.0f;
 
 /**
  * Timing configuration.
