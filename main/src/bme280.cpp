@@ -242,12 +242,12 @@ void Device::readCalibration() {
     calib.dig_H2 = static_cast<std::int32_t>(write8readS16LE(0xE1, i2c_port, i2c_addr));
     calib.dig_H3 = static_cast<std::int32_t>(write8read8(0xE3, i2c_port, i2c_addr));
     calib.dig_H4 =
-        static_cast<std::int32_t>((write8read8(0xE4, i2c_port, i2c_addr) << 4) |
+        static_cast<std::int32_t>((write8readS8(0xE4, i2c_port, i2c_addr) << 4) |
                                   (write8read8(0xE5, i2c_port, i2c_addr) & 0xF));
     calib.dig_H5 =
-        static_cast<std::int32_t>((write8read8(0xE6, i2c_port, i2c_addr) << 4) |
+        static_cast<std::int32_t>((write8readS8(0xE6, i2c_port, i2c_addr) << 4) |
                                   (write8read8(0xE5, i2c_port, i2c_addr) >> 4));
-    calib.dig_H6 = static_cast<std::int32_t>(write8read8(0xE7, i2c_port, i2c_addr));
+    calib.dig_H6 = static_cast<std::int32_t>(write8readS8(0xE7, i2c_port, i2c_addr));
     xSemaphoreGive(i2cMutex);
 }
 

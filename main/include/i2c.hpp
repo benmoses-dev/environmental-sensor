@@ -87,6 +87,11 @@ inline std::uint8_t write8read8(const std::uint8_t value, const i2c_port_t port,
     return buffer[0];
 }
 
+inline std::int8_t write8readS8(const std::uint8_t value, const i2c_port_t port,
+                                const std::uint8_t addr) {
+    return static_cast<std::int8_t>(write8read8(value, port, addr));
+}
+
 inline std::uint16_t write8read16(const std::uint8_t value, const i2c_port_t port,
                                   const std::uint8_t addr) {
     std::uint8_t buffer[2];
