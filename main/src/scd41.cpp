@@ -10,8 +10,6 @@ namespace SCD41 {
 
 static const char *TAG = "SCD41";
 
-#define DEBUG 0
-
 void scdTask(void *pvParameters) {
     Device *scd = static_cast<Device *>(pvParameters);
     scd->start();
@@ -30,29 +28,29 @@ Device::~Device() {
 bool Device::init() {
     shutdownAck = xSemaphoreCreateBinary();
     if (!shutdownAck) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGE(TAG, "Failed to create semaphore");
 #endif
         return false;
     }
     TickType_t startInit = xTaskGetTickCount();
-#if DEBUG
+#if SCD41_DEBUG
     const auto startTime = millis();
 #endif
     if (!wake()) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGE(TAG, "Failed to wake device!");
 #endif
     }
     if (!stopPeriodicMeasurement()) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGE(TAG, "Failed to stop periodic measurement");
 #endif
         return false;
     }
     ESP_LOGI(TAG, "SCD41 initialised successfully!");
     initialised = true;
-#if DEBUG
+#if SCD41_DEBUG
     const auto endTime = millis();
     const auto totalTime = endTime - startTime;
     ESP_LOGI(TAG, "Init took: %u, predicted: %u", totalTime, getInitTime());
@@ -65,7 +63,7 @@ bool Device::init() {
 void Device::start() {
     TickType_t last = xTaskGetTickCount();
     while (true) {
-#if DEBUG
+#if SCD41_DEBUG
         const auto sTime = millis();
 #endif
         bool shouldStop;
@@ -80,20 +78,20 @@ void Device::start() {
         }
         const bool res = singleShot();
         if (!res) {
-#if DEBUG
+#if SCD41_DEBUG
             ESP_LOGE(TAG, "Failed to start single shot!");
 #endif
             vTaskDelayUntil(&last, pdMS_TO_TICKS(SINGLE_SHOT_FREQ_MS));
             continue;
         }
         if (!getReading()) {
-#if DEBUG
+#if SCD41_DEBUG
             ESP_LOGE(TAG, "Failed to get reading!");
 #endif
             vTaskDelayUntil(&last, pdMS_TO_TICKS(SINGLE_SHOT_FREQ_MS));
             continue;
         }
-#if DEBUG
+#if SCD41_DEBUG
         const auto eTime = millis();
         const auto totalTime = eTime - sTime;
         ESP_LOGI(TAG, "Total loop time: %u, predicted: %u", totalTime,
@@ -114,13 +112,13 @@ bool Device::sleep() {
     }
     xSemaphoreTake(shutdownAck, portMAX_DELAY);
     const bool stopped = stopPeriodicMeasurement();
-#if DEBUG
+#if SCD41_DEBUG
     if (!stopped) {
         ESP_LOGE(TAG, "Could not stop device");
     }
 #endif
     const bool res = powerDown();
-#if DEBUG
+#if SCD41_DEBUG
     if (!res) {
         ESP_LOGE(TAG, "Could not sleep device");
     }
@@ -136,13 +134,13 @@ void Device::logReadings(QueueHandle_t q) {
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
     if (res.read) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGW(TAG, "Reading has already been read...");
 #endif
         return;
     }
     if (!res.valid) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGW(TAG, "Reading is invalid...");
 #endif
         return;
@@ -154,17 +152,17 @@ void Device::logReadings(QueueHandle_t q) {
 bool Device::getReading() {
     const bool ready = isDataReady();
     if (!ready) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGI(TAG, "Data not ready yet");
 #endif
         return false;
     }
-#if DEBUG
+#if SCD41_DEBUG
     ESP_LOGI(TAG, "Reading data");
 #endif
     std::uint8_t raw[9];
     if (!readMeasurement(raw)) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGE(TAG, "Failed to read SCD41");
 #endif
         return false;
@@ -178,7 +176,7 @@ bool Device::getReading() {
     const float humNorm = static_cast<float>(humRaw) / 65535.0f;
     const float humidity = 100.0 * humNorm; // 0..1 -> 0..100
     const float co2PPM = static_cast<float>(co2Raw);
-#if DEBUG
+#if SCD41_DEBUG
     ESP_LOGI(TAG, "Temp: %.2f °C, Hum: %.2f %%", temperature, humidity);
 #endif
     Reading res{};
@@ -257,7 +255,7 @@ bool Device::wake() {
 bool Device::readMeasurement(std::uint8_t *buffer) {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
     if (!write16(CMD_READ_MEASUREMENT)) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGE(TAG, "Failed to send read measurement command");
 #endif
         xSemaphoreGive(i2cMutex);
@@ -267,14 +265,14 @@ bool Device::readMeasurement(std::uint8_t *buffer) {
     const bool res = readBytes(buffer, 9);
     xSemaphoreGive(i2cMutex);
     if (!res) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGE(TAG, "Failed to read measurement bytes");
 #endif
         return false;
     }
     for (std::uint32_t i = 0; i < 9; i += 3) {
         if (getCRC8(&buffer[i]) != buffer[i + 2]) {
-#if DEBUG
+#if SCD41_DEBUG
             ESP_LOGE(TAG, "CRC mismatch for measurement %d", i);
 #endif
             return false;
@@ -286,7 +284,7 @@ bool Device::readMeasurement(std::uint8_t *buffer) {
 bool Device::isDataReady() {
     xSemaphoreTake(i2cMutex, portMAX_DELAY);
     if (!write16(CMD_GET_DATA_READY_STATUS)) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGE(TAG, "Failed to send data ready status command");
 #endif
         xSemaphoreGive(i2cMutex);
@@ -297,13 +295,13 @@ bool Device::isDataReady() {
     const bool res = readBytes(raw, 3);
     xSemaphoreGive(i2cMutex);
     if (!res) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGE(TAG, "Failed to read data ready status");
 #endif
         return false;
     }
     if (getCRC8(raw) != raw[2]) {
-#if DEBUG
+#if SCD41_DEBUG
         ESP_LOGE(TAG, "CRC mismatch for data ready status");
 #endif
         return false;

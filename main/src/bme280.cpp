@@ -48,8 +48,6 @@ namespace BME280 {
 
 static const char *TAG = "BME280";
 
-#define DEBUG 0
-
 Device::Device(const i2c_port_t port, const std::uint8_t addr)
     : i2c_port(port), i2c_addr(addr), initialised(false), shutdown(false) {}
 
@@ -68,23 +66,23 @@ void bme280Task(void *pvParameters) {
 bool Device::init() {
     shutdownAck = xSemaphoreCreateBinary();
     if (!shutdownAck) {
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGE(TAG, "Failed to create semaphore");
 #endif
         return false;
     }
     TickType_t startInit = xTaskGetTickCount();
-#if DEBUG
+#if BME280_DEBUG
     const auto startTime = millis();
 #endif
     if (read8(REG_ID) != 0x60) {
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGE(TAG, "Wrong BME280 ID!");
 #endif
         return false;
     }
     if (!write8(REG_RESET, 0xB6)) {
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGE(TAG, "Failed to set reset register!");
 #endif
         return false;
@@ -95,13 +93,13 @@ bool Device::init() {
     }
     readCalibration();
     if (!setMode(MODE_SLEEP)) {
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGE(TAG, "Failed to set sleep mode!");
 #endif
         return false;
     }
     if (!setSampling()) {
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGE(TAG, "Failed to set sampling config!");
 #endif
         return false;
@@ -109,7 +107,7 @@ bool Device::init() {
     delay_ms(100);
     ESP_LOGI(TAG, "BME280 initialised successfully!");
     initialised = true;
-#if DEBUG
+#if BME280_DEBUG
     const auto endTime = millis();
     const auto totalTime = endTime - startTime;
     ESP_LOGI(TAG, "Init took: %u, predicted: %u", totalTime, getInitTime());
@@ -122,7 +120,7 @@ bool Device::init() {
 void Device::start() {
     TickType_t last = xTaskGetTickCount();
     while (true) {
-#if DEBUG
+#if BME280_DEBUG
         const auto sTime = millis();
 #endif
         bool shouldStop;
@@ -130,7 +128,7 @@ void Device::start() {
         shouldStop = shutdown;
         taskEXIT_CRITICAL(&shutdownMux);
         if (shouldStop) {
-#if DEBUG
+#if BME280_DEBUG
             ESP_LOGI(TAG, "BME280 read-loop task stopping...");
 #endif
             xSemaphoreGive(shutdownAck);
@@ -138,13 +136,13 @@ void Device::start() {
             return;
         }
         if (!performReading()) {
-#if DEBUG
+#if BME280_DEBUG
             ESP_LOGW(TAG, "Failed to take reading in read-loop!");
 #endif
             vTaskDelayUntil(&last, pdMS_TO_TICKS(BME280_READ_FREQ_MS));
             continue;
         }
-#if DEBUG
+#if BME280_DEBUG
         const auto eTime = millis();
         const auto totalTime = eTime - sTime;
         ESP_LOGI(TAG, "Total reading time: %u, predicted: %u", totalTime,
@@ -161,13 +159,13 @@ void Device::logReadings(QueueHandle_t q) {
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
     if (res.read) {
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGW(TAG, "Reading has already been read...");
 #endif
         return;
     }
     if (!res.valid) {
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGW(TAG, "Reading is invalid...");
 #endif
         return;
@@ -188,11 +186,11 @@ bool Device::sleep() {
         xTaskAbortDelay(taskHandle);
     }
     xSemaphoreTake(shutdownAck, portMAX_DELAY);
-#if DEBUG
+#if BME280_DEBUG
     ESP_LOGI(TAG, "Got shutdown semaphore, sleeping...");
 #endif
     const bool res = setMode(MODE_SLEEP);
-#if DEBUG
+#if BME280_DEBUG
     if (!res) {
         ESP_LOGW(TAG, "Failed to sleep device by setting sleep mode...");
     }
@@ -210,7 +208,7 @@ bool Device::isDataReady() const {
 bool Device::performReading() {
     const bool result = setMode(MODE_FORCED);
     if (!result) {
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGE(TAG, "Failed to set forced mode!");
 #endif
         return false;
@@ -219,12 +217,12 @@ bool Device::performReading() {
     std::uint32_t tries = 0;
     while (!isDataReady()) {
         if (++tries >= 10) {
-#if DEBUG
+#if BME280_DEBUG
             ESP_LOGW(TAG, "Waited too long, exiting!");
 #endif
             return false;
         }
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGW(TAG, "Data not ready, waiting 5ms...");
 #endif
         delay_ms(5);
@@ -272,7 +270,7 @@ void Device::readCalibration() {
 }
 
 bool Device::setMode(const std::uint32_t mode) const {
-#if DEBUG
+#if BME280_DEBUG
     ESP_LOGI(TAG, "Setting mode to %u", mode);
 #endif
     const std::uint32_t measReg = (TEMP_OSRS << 5) | (PRES_OSRS << 2) | mode;
@@ -304,14 +302,14 @@ bool Device::setSampling() const {
     const std::uint32_t configReg = (dur << 5) | (filter << 2) | 0;
     bool res = write8(REG_CTRL_HUM, HUM_OSRS);
     if (!res) {
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGE(TAG, "Failed to write humidity register!");
 #endif
         return false;
     }
     res = write8(REG_CONFIG, configReg);
     if (!res) {
-#if DEBUG
+#if BME280_DEBUG
         ESP_LOGE(TAG, "Failed to write configuration register!");
 #endif
     }

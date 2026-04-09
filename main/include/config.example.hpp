@@ -25,6 +25,14 @@
 #define READ_SCD41 0
 
 /**
+ * Debugging.
+ */
+#define BME280_DEBUG 0
+#define BME680_DEBUG 0
+#define SDS011_DEBUG 0
+#define SCD41_DEBUG 0
+
+/**
  * I2C configuration.
  */
 inline constexpr i2c_port_t I2C_MASTER_NUM = I2C_NUM_0;

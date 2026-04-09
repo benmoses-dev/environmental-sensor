@@ -13,8 +13,6 @@ namespace SDS011 {
 
 static const char *TAG = "SDS011";
 
-#define DEBUG 1
-
 Device::Device(const uart_port_t p) : port(p), initialised(false), shutdown(false) {};
 
 Device::~Device() {
@@ -32,20 +30,20 @@ void sdsTask(void *pvParameters) {
 bool Device::init() {
     shutdownAck = xSemaphoreCreateBinary();
     if (!shutdownAck) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Failed to create semaphore");
 #endif
         return false;
     }
     uartMutex = xSemaphoreCreateMutex();
     if (uartMutex == nullptr) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Failed to create uart mutex");
 #endif
         return false;
     }
     TickType_t startInit = xTaskGetTickCount();
-#if DEBUG
+#if SDS011_DEBUG
     const auto startTime = millis();
 #endif
     uart_config_t uartConfig = {};
@@ -57,26 +55,26 @@ bool Device::init() {
     uartConfig.source_clk = UART_SCLK_DEFAULT;
     esp_err_t err = uart_driver_install(port, UART_BUF_SIZE, 0, 0, nullptr, 0);
     if (err != ESP_OK) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Failed to install UART driver");
 #endif
         return false;
     }
     err = uart_param_config(port, &uartConfig);
     if (err != ESP_OK) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Failed to configure UART");
 #endif
         return false;
     }
     err = uart_set_pin(port, TX_PIN, RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     if (err != ESP_OK) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Failed to set UART pins");
 #endif
         return false;
     }
-#if DEBUG
+#if SDS011_DEBUG
     ESP_LOGI(TAG, "SDS011 UART initialised");
 #endif
     xSemaphoreTake(uartMutex, portMAX_DELAY);
@@ -86,7 +84,7 @@ bool Device::init() {
         return false;
     }
     initialised = true;
-#if DEBUG
+#if SDS011_DEBUG
     const auto endTime = millis();
     const auto totalTime = endTime - startTime;
     ESP_LOGI(TAG, "Init took: %u, predicted: %u", totalTime, getInitTime());
@@ -99,54 +97,54 @@ bool Device::init() {
 bool Device::wake() {
     uart_flush_input(port);
     if (!sendCommand(SDS_WAKE_FRAME)) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Failed to set SDS011 to working mode!");
 #endif
         return false;
     }
     std::uint8_t res[SDS_RESPONSE_LENGTH];
     if (!readResponse(res)) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGW(TAG, "Failed to query SDS011 working mode!");
 #endif
         return false;
     }
     if (res[2] != 0x06) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGW(TAG, "Working mode query incorrect command!");
 #endif
         return false;
     }
     if (res[4] != 0x01) { // Work
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGW(TAG, "Working mode query returned non-working result!");
 #endif
         return false;
     }
-#if DEBUG
+#if SDS011_DEBUG
     ESP_LOGI(TAG, "Set SDS011 to working state.");
 #endif
     uart_flush_input(port);
     if (!sendCommand(SDS_SET_QUERY_MODE_FRAME)) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Failed to set SDS011 to query mode!");
 #endif
         return false;
     }
     if (!readResponse(res)) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGW(TAG, "Failed to query SDS011 active mode!");
 #endif
         return false;
     }
     if (res[1] != 0xC5 || res[2] != 0x02) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGW(TAG, "Active mode query incorrect command!");
 #endif
         return false;
     }
     if (res[4] != 0x01) { // Query
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGW(TAG, "Query mode query returned non-active result!");
 #endif
         return false;
@@ -165,11 +163,11 @@ bool Device::sleep() {
     xSemaphoreTake(shutdownAck, portMAX_DELAY);
     xSemaphoreTake(uartMutex, portMAX_DELAY);
     uart_flush_input(port);
-#if DEBUG
+#if SDS011_DEBUG
     ESP_LOGI(TAG, "Setting SDS011 to sleeping state...");
 #endif
     if (!sendCommand(SDS_SLEEP_FRAME)) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Failed to set SDS011 to sleeping state!");
 #endif
         xSemaphoreGive(uartMutex);
@@ -179,19 +177,19 @@ bool Device::sleep() {
     const bool result = readResponse(res);
     xSemaphoreGive(uartMutex);
     if (!result) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Failed to query SDS011 working mode!");
 #endif
         return false;
     }
     if (res[2] != 0x06) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Working mode query incorrect command!");
 #endif
         return false;
     }
     if (res[4] != 0x00) { // Sleep
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Working mode query returned non-sleeping result!");
 #endif
         return false;
@@ -213,7 +211,7 @@ void Device::logReadings(QueueHandle_t q) {
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
     if (res.read || !res.valid) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGW(TAG, "Reading has already been read or is invalid...");
 #endif
         return;
@@ -235,14 +233,14 @@ bool Device::sendCommand(const std::uint8_t (&frame)[SDS_FRAME_LENGTH]) {
     const std::int32_t written =
         uart_write_bytes(port, reinterpret_cast<const char *>(temp), SDS_FRAME_LENGTH);
     if (written != SDS_FRAME_LENGTH) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "Failed to send SDS011 frame");
 #endif
         return false;
     }
     const esp_err_t err = uart_wait_tx_done(port, pdMS_TO_TICKS(100));
     if (err != ESP_OK) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGE(TAG, "UART TX did not complete!");
 #endif
         return false;
@@ -254,7 +252,7 @@ void Device::start() {
     std::uint8_t frame[SDS_RESPONSE_LENGTH];
     TickType_t startLoop = xTaskGetTickCount();
     while (true) {
-#if DEBUG
+#if SDS011_DEBUG
         const auto sTime = millis();
         ESP_LOGI(TAG, "Start loop time: %u", sTime);
 #endif
@@ -271,7 +269,7 @@ void Device::start() {
         xSemaphoreTake(uartMutex, portMAX_DELAY);
         uart_flush_input(port);
         if (!sendCommand(SDS_QUERY_DATA_FRAME)) {
-#if DEBUG
+#if SDS011_DEBUG
             ESP_LOGE(TAG, "Failed to send query data frame!");
 #endif
             xSemaphoreGive(uartMutex);
@@ -281,7 +279,7 @@ void Device::start() {
         const bool result = readResponse(frame, pdMS_TO_TICKS(200));
         xSemaphoreGive(uartMutex);
         if (!result) {
-#if DEBUG
+#if SDS011_DEBUG
             ESP_LOGE(TAG, "Failed to read data response frame!");
 #endif
             vTaskDelayUntil(&startLoop, pdMS_TO_TICKS(READING_FREQ_MS));
@@ -293,14 +291,14 @@ void Device::start() {
             taskENTER_CRITICAL(&readingMux);
             reading = res;
             taskEXIT_CRITICAL(&readingMux);
-#if DEBUG
+#if SDS011_DEBUG
             const auto eTime = millis();
             ESP_LOGI(TAG, "End loop time: %u", eTime);
             const auto totalTime = eTime - sTime;
             ESP_LOGI(TAG, "Total loop time: %u", totalTime);
 #endif
         } else {
-#if DEBUG
+#if SDS011_DEBUG
             ESP_LOGW(TAG, "Reading is invalid!");
 #endif
         }
@@ -317,7 +315,7 @@ bool Device::readResponse(std::uint8_t (&resp)[SDS_RESPONSE_LENGTH], TickType_t 
     resp[0] = byte;
     len = uart_read_bytes(port, resp + 1, SDS_RESPONSE_LENGTH - 1, timeout);
     if (len != SDS_RESPONSE_LENGTH - 1) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGW(TAG, "Incorrect number of bytes read from uart");
 #endif
         return false;
@@ -327,7 +325,7 @@ bool Device::readResponse(std::uint8_t (&resp)[SDS_RESPONSE_LENGTH], TickType_t 
         checksum += resp[i];
     }
     if (checksum != resp[8]) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGW(TAG, "Incorrect checksum");
 #endif
         return false;
@@ -342,7 +340,7 @@ void Device::parseFrame(const std::uint8_t frame[SDS_RESPONSE_LENGTH], Reading &
     reading.t = 0;
     reading.read = false;
     if (frame[0] != 0xAA || frame[1] != 0xC0 || frame[9] != 0xAB) {
-#if DEBUG
+#if SDS011_DEBUG
         ESP_LOGW(TAG, "Incorrect frame format");
 #endif
         return;
