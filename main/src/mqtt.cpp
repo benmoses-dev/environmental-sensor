@@ -8,10 +8,12 @@ static const char *TAG = "MQTT";
 
 #define DEBUG 0
 
-void MQTT::getTopic(const char *topic, char *buf, const std::size_t len) {
+void MQTT::getTopic(const char *topic, char *buf, const std::size_t len) const {
     const std::int32_t n = snprintf(buf, len, "device/%s/%s", deviceID, topic);
     if (n < 0 || n >= len) {
-        ESP_LOGW("MQTT", "Topic truncated!");
+#if DEBUG
+        ESP_LOGW(TAG, "Topic truncated!");
+#endif
     }
 }
 
@@ -94,7 +96,7 @@ bool MQTT::publish(const char *topic, const char *message) {
     return true;
 }
 
-bool MQTT::waitForPublishes(TickType_t timeoutTicks) {
+bool MQTT::waitForPublishes(TickType_t timeoutTicks) const {
     if (pendingPublishes.load() == 0) {
         return true;
     }

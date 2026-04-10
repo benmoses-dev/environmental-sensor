@@ -1,6 +1,7 @@
 #include "bme280.hpp"
 #include "bme680.hpp"
 #include "config.hpp"
+#include "environment.hpp"
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
@@ -26,83 +27,28 @@ static const char *TAG = "MAIN";
 
 #define DEBUG 1
 
-WIFI wifi;
-MQTT mqtt;
-QueueHandle_t eventQueue;
-SemaphoreHandle_t i2cMutex = nullptr;
+static constexpr bool shouldInitI2C() {
+    return READ_BME280 || READ_BME680 || READ_SCD41 || READ_SHT45 || READ_SGP40 ||
+           READ_SGP41;
+}
 
-#if READ_BME280
-BME280::Device bme280;
-#endif
-
-#if READ_BME680
-BME680::Device bme680;
-#endif
-
-#if READ_SDS011
-SDS011::Device sds;
-#endif
-
-#if READ_SCD41
-SCD41::Device scd;
-#endif
-
-#if READ_SHT45
-SHT45::Device sht45;
-#endif
-
-#if READ_SGP40
-SGP40::Device sgp40;
-#endif
-
-#if READ_SGP41
-SGP41::Device sgp41;
-#endif
-
-ISensor *sensors[] = {
-#if READ_BME280
-    &bme280,
-#endif
-#if READ_BME680
-    &bme680,
-#endif
-#if READ_SDS011
-    &sds,
-#endif
-#if READ_SCD41
-    &scd,
-#endif
-#if READ_SHT45
-    &sht45,
-#endif
-#if READ_SGP40
-    &sgp40,
-#endif
-#if READ_SGP41
-    &sgp41,
-#endif
+struct MainContext {
+    ISensor **sensors;
+    const std::size_t sensorCount;
+    const std::uint32_t mainLoopMS;
+    const QueueHandle_t eventQueue;
+    const WIFI &wifi;
+    MQTT &mqtt;
 };
 
-constexpr std::size_t SENSOR_COUNT = std::size(sensors);
+SemaphoreHandle_t i2cMutex = nullptr;
 
-constexpr bool INITIALISE_I2C =
-    READ_BME280 || READ_BME680 || READ_SCD41 || READ_SHT45 || READ_SGP40 || READ_SGP41;
-
-constexpr std::uint32_t WIFI_CONNECT_TIME_MS = 10'000;
-
-std::uint32_t getWarmupTime() {
-    for (std::size_t i = 0; i < SENSOR_COUNT; ++i) {
-        for (std::size_t j = i + 1; j < SENSOR_COUNT; ++j) {
-            if (sensors[j]->getDataReadyTime() > sensors[i]->getDataReadyTime()) {
-                ISensor *tmp = sensors[i];
-                sensors[i] = sensors[j];
-                sensors[j] = tmp;
-            }
-        }
-    }
+static std::uint32_t getWarmupTime(const MainContext *context) {
     std::uint32_t warmupTime = 0;
     std::uint32_t initSoFar = 0;
-    for (ISensor *s : sensors) {
+    ISensor *s;
+    for (std::size_t i = 0; i < context->sensorCount; ++i) {
+        s = context->sensors[i];
         const std::uint32_t at = s->getInitTime() + s->getDataReadyTime();
         warmupTime = std::max(warmupTime, at + initSoFar);
         initSoFar += s->getInitTime();
@@ -113,9 +59,11 @@ std::uint32_t getWarmupTime() {
     return warmupTime;
 }
 
-std::uint32_t getMainLoopTime() {
+static std::uint32_t getMainLoopTime(ISensor **sensors, const std::size_t sensorCount) {
     std::uint32_t mainLoopTime = std::numeric_limits<std::uint32_t>::max();
-    for (ISensor *s : sensors) {
+    ISensor *s;
+    for (std::size_t i = 0; i < sensorCount; ++i) {
+        s = sensors[i];
         mainLoopTime = std::min(mainLoopTime, s->getLoopTime());
     }
 #if DEBUG
@@ -124,16 +72,7 @@ std::uint32_t getMainLoopTime() {
     return mainLoopTime;
 }
 
-std::uint32_t MAIN_LOOP_MS = getMainLoopTime();
-
-std::uint32_t WARMUP_MS = getWarmupTime();
-
-std::uint32_t SLEEP_PERIOD_MS = static_cast<std::uint32_t>(
-    std::max(static_cast<int>(MEASUREMENT_PERIOD_MS) - static_cast<int>(WARMUP_MS) -
-                 static_cast<int>(WIFI_CONNECT_TIME_MS),
-             0));
-
-void toJson(const Event &event, char *buf, const std::size_t size) {
+static void toJson(const Event &event, char *buf, const std::size_t size) {
     const std::int32_t n = snprintf(buf, size, "{\"time\":%lld,\"val\":%.2f}",
                                     static_cast<long long>(event.timestamp), event.val);
     if (n < 0 || n >= size) {
@@ -143,13 +82,12 @@ void toJson(const Event &event, char *buf, const std::size_t size) {
     }
 }
 
-void goToSleep() {
-    if (OPERATING_MODE > 0 && SLEEP_PERIOD_MS > 0) {
+static void goToSleep(const std::uint32_t sleepPeriod) {
+    if (OPERATING_MODE > 0 && sleepPeriod > 0) {
 #if DEBUG
-        ESP_LOGI(TAG, "Entering deep sleep for %u ms...", SLEEP_PERIOD_MS);
+        ESP_LOGI(TAG, "Entering deep sleep for %u ms...", sleepPeriod);
 #endif
-        const std::uint64_t sleepDur =
-            static_cast<std::uint64_t>(SLEEP_PERIOD_MS) * 1'000ULL;
+        const std::uint64_t sleepDur = static_cast<std::uint64_t>(sleepPeriod) * 1'000ULL;
         esp_sleep_enable_timer_wakeup(sleepDur);
         esp_deep_sleep_start();
     }
@@ -159,47 +97,48 @@ void goToSleep() {
     esp_restart();
 }
 
-void shutdownSensors() {
+static void shutdownSensors(const MainContext *context) {
 #if DEBUG
     ESP_LOGI(TAG, "Shutting down sensors...");
 #endif
-    for (ISensor *s : sensors) {
+    ISensor *s;
+    for (std::size_t i = 0; i < context->sensorCount; ++i) {
+        s = context->sensors[i];
         if (s->isInitialised()) {
             s->sleep();
         }
     }
 }
 
-void powerOff() {
-    shutdownSensors();
-    goToSleep();
-}
-
-void takeReadings() {
-    for (ISensor *s : sensors) {
+static void takeReadings(const MainContext *context) {
+    ISensor *s;
+    for (std::size_t i = 0; i < context->sensorCount; ++i) {
+        s = context->sensors[i];
         if (s->isInitialised()) {
-            s->logReadings(eventQueue);
+            s->logReadings(context->eventQueue);
         }
     }
 }
 
-void readTask(void *pvParameters) {
+static void readTask(void *pvParameters) {
     TickType_t last = xTaskGetTickCount();
+    const MainContext *context = static_cast<const MainContext *>(pvParameters);
     while (true) {
-        takeReadings();
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(MAIN_LOOP_MS));
+        takeReadings(context);
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(context->mainLoopMS));
     }
 }
 
-void publishReadings(const std::uint32_t portDelay = 0) {
-    if (!wifi.connected || !mqtt.connected) {
+static void publishReadings(const MainContext *context, const std::uint32_t portDelay) {
+    if (!context->wifi.connected || !context->mqtt.connected) {
 #if DEBUG
         ESP_LOGE(TAG, "WiFi or MQTT disconnected, returning from publishReadings...");
 #endif
         return;
     }
     Event event;
-    while (xQueueReceive(eventQueue, &event, pdMS_TO_TICKS(portDelay)) == pdTRUE) {
+    while (xQueueReceive(context->eventQueue, &event, pdMS_TO_TICKS(portDelay)) ==
+           pdTRUE) {
         const std::size_t len = 64;
         char buf[len];
         toJson(event, buf, len);
@@ -208,63 +147,63 @@ void publishReadings(const std::uint32_t portDelay = 0) {
 #if DEBUG
             ESP_LOGI(TAG, "Temp: %.2f °C", event.val);
 #endif
-            mqtt.publish("temperature", buf);
+            context->mqtt.publish("temperature", buf);
             break;
 
         case EventType::HUM:
 #if DEBUG
             ESP_LOGI(TAG, "Humidity: %.2f %%", event.val);
 #endif
-            mqtt.publish("humidity", buf);
+            context->mqtt.publish("humidity", buf);
             break;
 
         case EventType::PRES:
 #if DEBUG
             ESP_LOGI(TAG, "Pressure: %.2f hPa", event.val / 100.0f);
 #endif
-            mqtt.publish("pressure", buf);
+            context->mqtt.publish("pressure", buf);
             break;
 
         case EventType::GAS:
 #if DEBUG
             ESP_LOGI(TAG, "Gas: %.2f kΩ", event.val / 1000.0f);
 #endif
-            mqtt.publish("gas", buf);
+            context->mqtt.publish("gas", buf);
             break;
 
         case EventType::PM2_5:
 #if DEBUG
             ESP_LOGI(TAG, "PM2.5: %.2f ug/m3", event.val);
 #endif
-            mqtt.publish("pm2_5", buf);
+            context->mqtt.publish("pm2_5", buf);
             break;
 
         case EventType::PM10:
 #if DEBUG
             ESP_LOGI(TAG, "PM10 : %.2f ug/m3", event.val);
 #endif
-            mqtt.publish("pm10", buf);
+            context->mqtt.publish("pm10", buf);
             break;
 
         case EventType::CO2:
 #if DEBUG
             ESP_LOGI(TAG, "CO2 : %.2f ppm", event.val);
 #endif
-            mqtt.publish("co2", buf);
+            context->mqtt.publish("co2", buf);
             break;
 
         case EventType::VOC:
 #if DEBUG
             ESP_LOGI(TAG, "VOC : %.2f", event.val);
 #endif
-            mqtt.publish("voc", buf);
+            context->mqtt.publish("voc", buf);
             break;
 
         case EventType::NOX:
 #if DEBUG
             ESP_LOGI(TAG, "NOX : %.2f", event.val);
 #endif
-            mqtt.publish("nox", buf);
+            context->mqtt.publish("nox", buf);
             break;
 
         default:
@@ -276,21 +215,86 @@ void publishReadings(const std::uint32_t portDelay = 0) {
     }
 }
 
-void logTask(void *pvParameters) {
+static void logTask(void *pvParameters) {
+    const MainContext *context = static_cast<const MainContext *>(pvParameters);
     while (true) {
-        publishReadings(1500);
+        publishReadings(context, 1500);
     }
 }
 
 extern "C" void app_main() {
-    i2cMutex = xSemaphoreCreateMutex();
-    if (i2cMutex == nullptr) {
-#if DEBUG
-        ESP_LOGE(TAG, "Could not create i2c mutex, aborting...");
+    TickType_t startWifi = xTaskGetTickCount();
+
+#if READ_BME280
+    static BME280::Device bme280;
 #endif
-        goToSleep();
+#if READ_BME680
+    static BME680::Device bme680;
+#endif
+#if READ_SDS011
+    static SDS011::Device sds;
+#endif
+#if READ_SCD41
+    static SCD41::Device scd;
+#endif
+#if READ_SHT45
+    static SHT45::Device sht45;
+#endif
+#if READ_SGP40
+    static SGP40::Device sgp40;
+#endif
+#if READ_SGP41
+    static SGP41::Device sgp41;
+#endif
+    static ISensor *sensors[] = {
+#if READ_BME280
+        &bme280,
+#endif
+#if READ_BME680
+        &bme680,
+#endif
+#if READ_SDS011
+        &sds,
+#endif
+#if READ_SCD41
+        &scd,
+#endif
+#if READ_SHT45
+        &sht45,
+#endif
+#if READ_SGP40
+        &sgp40,
+#endif
+#if READ_SGP41
+        &sgp41,
+#endif
+    };
+    constexpr std::size_t SENSOR_COUNT = std::size(sensors);
+    for (std::size_t i = 0; i < SENSOR_COUNT; ++i) {
+        for (std::size_t j = i + 1; j < SENSOR_COUNT; ++j) {
+            if (sensors[j]->getDataReadyTime() > sensors[i]->getDataReadyTime()) {
+                ISensor *tmp = sensors[i];
+                sensors[i] = sensors[j];
+                sensors[j] = tmp;
+            }
+        }
     }
-    TickType_t startMain = xTaskGetTickCount();
+
+    const std::uint32_t mainLoopPeriod = getMainLoopTime(sensors, SENSOR_COUNT);
+    static const QueueHandle_t eventQueue = xQueueCreate(1000, sizeof(Event));
+    static WIFI wifi;
+    static MQTT mqtt;
+    static MainContext context = {
+        sensors, SENSOR_COUNT, mainLoopPeriod, eventQueue, wifi, mqtt,
+    };
+
+    const std::uint32_t warmupPeriod = getWarmupTime(&context);
+    constexpr std::uint32_t WIFI_CONNECT_TIME_MS = 10'000;
+    const std::uint32_t sleepPeriod = static_cast<std::uint32_t>(std::max(
+        static_cast<int>(MEASUREMENT_PERIOD_MS) - static_cast<int>(warmupPeriod) -
+            static_cast<int>(WIFI_CONNECT_TIME_MS),
+        0));
+
 #if DEBUG
     const auto sTime = millis();
 #endif
@@ -298,33 +302,45 @@ extern "C" void app_main() {
 #if DEBUG
         ESP_LOGE(TAG, "WiFi initialisation failed, exiting...");
 #endif
-        goToSleep();
+        goToSleep(sleepPeriod);
     }
     if (!wifi.initTime()) {
 #if DEBUG
         ESP_LOGE(TAG, "Could not synchronise NTP, exiting...");
 #endif
-        goToSleep();
+        goToSleep(sleepPeriod);
     }
     if (!mqtt.init()) {
 #if DEBUG
         ESP_LOGE(TAG, "Could not initialise MQTT, exiting...");
 #endif
-        goToSleep();
-    }
-    if (INITIALISE_I2C && !initialiseI2C(I2C_MASTER_NUM)) {
-#if DEBUG
-        ESP_LOGE(TAG, "Failed to initialise i2c!");
-#endif
-        goToSleep();
+        goToSleep(sleepPeriod);
     }
 #if DEBUG
     const auto eTime = millis();
     const auto wifiTime = eTime - sTime;
     ESP_LOGI(TAG, "WiFi time: %u", wifiTime);
 #endif
-    xTaskDelayUntil(&startMain, pdMS_TO_TICKS(WIFI_CONNECT_TIME_MS));
+
+    vTaskDelayUntil(&startWifi, pdMS_TO_TICKS(WIFI_CONNECT_TIME_MS));
+
     TickType_t startInit = xTaskGetTickCount();
+
+    constexpr bool INITIALISE_I2C = shouldInitI2C();
+    if (INITIALISE_I2C && !initialiseI2C(I2C_MASTER_NUM)) {
+#if DEBUG
+        ESP_LOGE(TAG, "Failed to initialise i2c!");
+#endif
+        goToSleep(sleepPeriod);
+    }
+    i2cMutex = xSemaphoreCreateMutex();
+    if (i2cMutex == nullptr) {
+#if DEBUG
+        ESP_LOGE(TAG, "Could not create i2c mutex, aborting...");
+#endif
+        goToSleep(sleepPeriod);
+    }
+
     std::uint32_t count = 0;
     for (ISensor *s : sensors) {
         if (!s->init()) {
@@ -339,7 +355,7 @@ extern "C" void app_main() {
 #if DEBUG
         ESP_LOGE(TAG, "No Sensors initialised!");
 #endif
-        goToSleep();
+        goToSleep(sleepPeriod);
     }
 #if DEBUG
     ESP_LOGI(TAG, "Initialised %d Sensors...", count);
@@ -349,19 +365,21 @@ extern "C" void app_main() {
 #if DEBUG
     ESP_LOGI(TAG, "Waiting until end of warmup period...");
 #endif
-    xTaskDelayUntil(&startInit, pdMS_TO_TICKS(WARMUP_MS));
-    eventQueue = xQueueCreate(1000, sizeof(Event));
-    if (OPERATING_MODE == 0) { // Continuous
+
+    vTaskDelayUntil(&startInit, pdMS_TO_TICKS(warmupPeriod));
+
+    if (OPERATING_MODE == 0) {
 #if DEBUG
         ESP_LOGI(TAG, "Continuous mode - starting tasks and returning from main...");
 #endif
-        xTaskCreate(readTask, "ReadTask", 4096, NULL, 6, NULL);
-        xTaskCreate(logTask, "LogTask", 4096, NULL, 3, NULL);
+        xTaskCreate(readTask, "ReadTask", 4096, &context, 6, NULL);
+        xTaskCreate(logTask, "LogTask", 4096, &context, 3, NULL);
         return;
     }
-    takeReadings();
-    shutdownSensors();
-    publishReadings(0);
+
+    takeReadings(&context);
+    shutdownSensors(&context);
+    publishReadings(&context, 0);
     const TickType_t timeoutTicks = pdMS_TO_TICKS(5000);
     if (!mqtt.waitForPublishes(timeoutTicks)) {
 #if DEBUG
@@ -372,5 +390,6 @@ extern "C" void app_main() {
         ESP_LOGI(TAG, "All MQTT messages confirmed");
 #endif
     }
-    goToSleep();
+
+    goToSleep(sleepPeriod);
 }
