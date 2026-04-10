@@ -39,6 +39,9 @@
 #define SGP40_DEBUG 0
 #define SGP41_DEBUG 0
 #define SPS30_DEBUG 0
+#define WIFI_DEBUG 0
+#define MQTT_DEBUG 0
+#define MAIN_DEBUG 0
 
 /**
  * I2C configuration.

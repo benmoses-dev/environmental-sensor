@@ -6,12 +6,10 @@
 
 static const char *TAG = "MQTT";
 
-#define DEBUG 0
-
 void MQTT::getTopic(const char *topic, char *buf, const std::size_t len) const {
     const std::int32_t n = snprintf(buf, len, "device/%s/%s", deviceID, topic);
     if (n < 0 || n >= len) {
-#if DEBUG
+#if MQTT_DEBUG
         ESP_LOGW(TAG, "Topic truncated!");
 #endif
     }
@@ -30,7 +28,7 @@ void MQTT::handler(void *args, esp_event_base_t base, std::int32_t id, void *dat
     std::uint32_t pending;
     switch (event->event_id) {
     case MQTT_EVENT_CONNECTED:
-#if DEBUG
+#if MQTT_DEBUG
         ESP_LOGI(TAG, "MQTT connected");
 #endif
         self->connected = true;
@@ -39,7 +37,7 @@ void MQTT::handler(void *args, esp_event_base_t base, std::int32_t id, void *dat
         break;
 
     case MQTT_EVENT_DISCONNECTED:
-#if DEBUG
+#if MQTT_DEBUG
         ESP_LOGW(TAG, "MQTT disconnected");
 #endif
         self->connected = false;
@@ -51,7 +49,7 @@ void MQTT::handler(void *args, esp_event_base_t base, std::int32_t id, void *dat
             self->pendingPublishes.fetch_sub(1);
         }
         pending = self->pendingPublishes.load();
-#if DEBUG
+#if MQTT_DEBUG
         ESP_LOGI(TAG, "MQTT publish ACK received, pending=%lu",
                  static_cast<unsigned long>(pending));
 #endif
@@ -67,7 +65,7 @@ void MQTT::handler(void *args, esp_event_base_t base, std::int32_t id, void *dat
 
 bool MQTT::publish(const char *topic, const char *message) {
     if (!connected) {
-#if DEBUG
+#if MQTT_DEBUG
         ESP_LOGW(TAG, "MQTT not connected, not sending message!");
 #endif
         return false;
@@ -79,7 +77,7 @@ bool MQTT::publish(const char *topic, const char *message) {
     xEventGroupClearBits(meg, MQTT::ALL_PUBLISHED_BIT);
     const std::int32_t res = esp_mqtt_client_publish(client, buf, message, 0, 1, 0);
     if (res < 0) {
-#if DEBUG
+#if MQTT_DEBUG
         ESP_LOGW(TAG, "Error publishing message!");
 #endif
         pendingPublishes.fetch_sub(1);
@@ -88,7 +86,7 @@ bool MQTT::publish(const char *topic, const char *message) {
         }
         return false;
     }
-#if DEBUG
+#if MQTT_DEBUG
     const std::uint32_t pending = pendingPublishes.load();
     ESP_LOGI(TAG, "Queued publish to %s, pending=%lu", buf,
              static_cast<unsigned long>(pending));
@@ -100,7 +98,7 @@ bool MQTT::waitForPublishes(TickType_t timeoutTicks) const {
     if (pendingPublishes.load() == 0) {
         return true;
     }
-#if DEBUG
+#if MQTT_DEBUG
     ESP_LOGI(TAG, "Waiting for MQTT ACKs...");
 #endif
     EventBits_t bits =
@@ -109,7 +107,7 @@ bool MQTT::waitForPublishes(TickType_t timeoutTicks) const {
 }
 
 bool MQTT::init() {
-#if DEBUG
+#if MQTT_DEBUG
     ESP_LOGI(TAG, "Initialising MQTT...");
 #endif
     meg = xEventGroupCreate();
@@ -127,7 +125,7 @@ bool MQTT::init() {
     config.task.priority = 3;
     client = esp_mqtt_client_init(&config);
     if (client == NULL) {
-#if DEBUG
+#if MQTT_DEBUG
         ESP_LOGE(TAG, "Failed to initialise MQTT client!");
 #endif
         return false;
@@ -135,14 +133,14 @@ bool MQTT::init() {
     esp_err_t res =
         esp_mqtt_client_register_event(client, MQTT_EVENT_ANY, MQTT::handler, this);
     if (res != ESP_OK) {
-#if DEBUG
+#if MQTT_DEBUG
         ESP_LOGE(TAG, "Failed to register MQTT client handler!");
 #endif
         return false;
     }
     res = esp_mqtt_client_start(client);
     if (res != ESP_OK) {
-#if DEBUG
+#if MQTT_DEBUG
         ESP_LOGE(TAG, "Failed to start MQTT client!");
 #endif
         return false;
@@ -150,12 +148,12 @@ bool MQTT::init() {
     EventBits_t bits =
         xEventGroupWaitBits(meg, MQTT::CONNECTED_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
     if (bits & MQTT::CONNECTED_BIT) {
-#if DEBUG
+#if MQTT_DEBUG
         ESP_LOGI(TAG, "MQTT initialised successfully!");
 #endif
         return true;
     }
-#if DEBUG
+#if MQTT_DEBUG
     ESP_LOGE(TAG, "Failed to initialise MQTT!");
 #endif
     return false;

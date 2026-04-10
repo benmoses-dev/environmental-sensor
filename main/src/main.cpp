@@ -25,8 +25,6 @@
 
 static const char *TAG = "MAIN";
 
-#define DEBUG 1
-
 static constexpr bool shouldInitI2C() {
     return READ_BME280 || READ_BME680 || READ_SCD41 || READ_SHT45 || READ_SGP40 ||
            READ_SGP41;
@@ -53,7 +51,7 @@ static std::uint32_t getWarmupTime(const MainContext *context) {
         warmupTime = std::max(warmupTime, at + initSoFar);
         initSoFar += s->getInitTime();
     }
-#if DEBUG
+#if MAIN_DEBUG
     ESP_LOGI(TAG, "Warmup time: %u", warmupTime);
 #endif
     return warmupTime;
@@ -66,7 +64,7 @@ static std::uint32_t getMainLoopTime(ISensor **sensors, const std::size_t sensor
         s = sensors[i];
         mainLoopTime = std::min(mainLoopTime, s->getLoopTime());
     }
-#if DEBUG
+#if MAIN_DEBUG
     ESP_LOGI(TAG, "Main loop time: %u", mainLoopTime);
 #endif
     return mainLoopTime;
@@ -76,7 +74,7 @@ static void toJson(const Event &event, char *buf, const std::size_t size) {
     const std::int32_t n = snprintf(buf, size, "{\"time\":%lld,\"val\":%.2f}",
                                     static_cast<long long>(event.timestamp), event.val);
     if (n < 0 || n >= size) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGW("MQTT", "JSON string truncated!");
 #endif
     }
@@ -84,21 +82,21 @@ static void toJson(const Event &event, char *buf, const std::size_t size) {
 
 static void goToSleep(const std::uint32_t sleepPeriod) {
     if (OPERATING_MODE > 0 && sleepPeriod > 0) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGI(TAG, "Entering deep sleep for %u ms...", sleepPeriod);
 #endif
         const std::uint64_t sleepDur = static_cast<std::uint64_t>(sleepPeriod) * 1'000ULL;
         esp_sleep_enable_timer_wakeup(sleepDur);
         esp_deep_sleep_start();
     }
-#if DEBUG
+#if MAIN_DEBUG
     ESP_LOGI(TAG, "Restarting...");
 #endif
     esp_restart();
 }
 
 static void shutdownSensors(const MainContext *context) {
-#if DEBUG
+#if MAIN_DEBUG
     ESP_LOGI(TAG, "Shutting down sensors...");
 #endif
     ISensor *s;
@@ -131,7 +129,7 @@ static void readTask(void *pvParameters) {
 
 static void publishReadings(const MainContext *context, const std::uint32_t portDelay) {
     if (!context->wifi.connected || !context->mqtt.connected) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGE(TAG, "WiFi or MQTT disconnected, returning from publishReadings...");
 #endif
         return;
@@ -144,70 +142,70 @@ static void publishReadings(const MainContext *context, const std::uint32_t port
         toJson(event, buf, len);
         switch (event.type) {
         case EventType::TEMP:
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGI(TAG, "Temp: %.2f °C", event.val);
 #endif
             context->mqtt.publish("temperature", buf);
             break;
 
         case EventType::HUM:
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGI(TAG, "Humidity: %.2f %%", event.val);
 #endif
             context->mqtt.publish("humidity", buf);
             break;
 
         case EventType::PRES:
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGI(TAG, "Pressure: %.2f hPa", event.val / 100.0f);
 #endif
             context->mqtt.publish("pressure", buf);
             break;
 
         case EventType::GAS:
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGI(TAG, "Gas: %.2f kΩ", event.val / 1000.0f);
 #endif
             context->mqtt.publish("gas", buf);
             break;
 
         case EventType::PM2_5:
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGI(TAG, "PM2.5: %.2f ug/m3", event.val);
 #endif
             context->mqtt.publish("pm2_5", buf);
             break;
 
         case EventType::PM10:
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGI(TAG, "PM10 : %.2f ug/m3", event.val);
 #endif
             context->mqtt.publish("pm10", buf);
             break;
 
         case EventType::CO2:
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGI(TAG, "CO2 : %.2f ppm", event.val);
 #endif
             context->mqtt.publish("co2", buf);
             break;
 
         case EventType::VOC:
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGI(TAG, "VOC : %.2f", event.val);
 #endif
             context->mqtt.publish("voc", buf);
             break;
 
         case EventType::NOX:
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGI(TAG, "NOX : %.2f", event.val);
 #endif
             context->mqtt.publish("nox", buf);
             break;
 
         default:
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGE(TAG, "Unknown event type");
 #endif
             break;
@@ -295,28 +293,28 @@ extern "C" void app_main() {
             static_cast<int>(WIFI_CONNECT_TIME_MS),
         0));
 
-#if DEBUG
+#if MAIN_DEBUG
     const auto sTime = millis();
 #endif
     if (!wifi.init()) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGE(TAG, "WiFi initialisation failed, exiting...");
 #endif
         goToSleep(sleepPeriod);
     }
     if (!wifi.initTime()) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGE(TAG, "Could not synchronise NTP, exiting...");
 #endif
         goToSleep(sleepPeriod);
     }
     if (!mqtt.init()) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGE(TAG, "Could not initialise MQTT, exiting...");
 #endif
         goToSleep(sleepPeriod);
     }
-#if DEBUG
+#if MAIN_DEBUG
     const auto eTime = millis();
     const auto wifiTime = eTime - sTime;
     ESP_LOGI(TAG, "WiFi time: %u", wifiTime);
@@ -328,14 +326,14 @@ extern "C" void app_main() {
 
     constexpr bool INITIALISE_I2C = shouldInitI2C();
     if (INITIALISE_I2C && !initialiseI2C(I2C_MASTER_NUM)) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGE(TAG, "Failed to initialise i2c!");
 #endif
         goToSleep(sleepPeriod);
     }
     i2cMutex = xSemaphoreCreateMutex();
     if (i2cMutex == nullptr) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGE(TAG, "Could not create i2c mutex, aborting...");
 #endif
         goToSleep(sleepPeriod);
@@ -344,7 +342,7 @@ extern "C" void app_main() {
     std::uint32_t count = 0;
     for (ISensor *s : sensors) {
         if (!s->init()) {
-#if DEBUG
+#if MAIN_DEBUG
             ESP_LOGE(TAG, "Sensor failed to initialise!");
 #endif
             continue;
@@ -352,24 +350,24 @@ extern "C" void app_main() {
         count++;
     }
     if (count == 0) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGE(TAG, "No Sensors initialised!");
 #endif
         goToSleep(sleepPeriod);
     }
-#if DEBUG
+#if MAIN_DEBUG
     ESP_LOGI(TAG, "Initialised %d Sensors...", count);
     ESP_LOGI(TAG, "Adjustments: temp = %.2f, hum = %.2f, pres = %.2f", TEMP_ADJUST,
              HUM_ADJUST, PRES_ADJUST);
 #endif
-#if DEBUG
+#if MAIN_DEBUG
     ESP_LOGI(TAG, "Waiting until end of warmup period...");
 #endif
 
     vTaskDelayUntil(&startInit, pdMS_TO_TICKS(warmupPeriod));
 
     if (OPERATING_MODE == 0) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGI(TAG, "Continuous mode - starting tasks and returning from main...");
 #endif
         xTaskCreate(readTask, "ReadTask", 4096, &context, 6, NULL);
@@ -382,11 +380,11 @@ extern "C" void app_main() {
     publishReadings(&context, 0);
     const TickType_t timeoutTicks = pdMS_TO_TICKS(5000);
     if (!mqtt.waitForPublishes(timeoutTicks)) {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGW(TAG, "Not all MQTT messages confirmed within timeout!");
 #endif
     } else {
-#if DEBUG
+#if MAIN_DEBUG
         ESP_LOGI(TAG, "All MQTT messages confirmed");
 #endif
     }
