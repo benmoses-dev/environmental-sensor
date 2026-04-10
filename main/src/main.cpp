@@ -220,6 +220,55 @@ static void logTask(void *pvParameters) {
     }
 }
 
+static void publishResetReason(const esp_reset_reason_t reason, MQTT &mqtt) {
+    switch (reason) {
+    case ESP_RST_POWERON:
+        mqtt.publish("reset", "Power-on reset");
+        break;
+
+    case ESP_RST_EXT:
+        mqtt.publish("reset", "External reset (reset pin)");
+        break;
+
+    case ESP_RST_SW:
+        mqtt.publish("reset", "Software reset (esp_restart)");
+        break;
+
+    case ESP_RST_PANIC:
+        mqtt.publish("reset", "Panic / crash reset");
+        break;
+
+    case ESP_RST_INT_WDT:
+        mqtt.publish("reset", "Interrupt watchdog reset");
+        break;
+
+    case ESP_RST_TASK_WDT:
+        mqtt.publish("reset", "Task watchdog reset");
+        break;
+
+    case ESP_RST_WDT:
+        mqtt.publish("reset", "Other watchdog reset");
+        break;
+
+    case ESP_RST_DEEPSLEEP:
+        mqtt.publish("reset", "Wake from deep sleep");
+        break;
+
+    case ESP_RST_BROWNOUT:
+        mqtt.publish("reset", "Brownout reset");
+        break;
+
+    case ESP_RST_SDIO:
+        mqtt.publish("reset", "SDIO reset");
+        break;
+
+    default:
+        mqtt.publish("reset", "Unknown reset reason");
+        break;
+    }
+}
+
+#if MAIN_DEBUG
 static void printResetReason(const esp_reset_reason_t reason) {
     switch (reason) {
     case ESP_RST_POWERON:
@@ -267,6 +316,7 @@ static void printResetReason(const esp_reset_reason_t reason) {
         break;
     }
 }
+#endif
 
 extern "C" void app_main() {
     const esp_reset_reason_t reason = esp_reset_reason();
@@ -367,6 +417,7 @@ extern "C" void app_main() {
 #endif
         goToSleep(sleepPeriod);
     }
+    publishResetReason(reason, mqtt);
 #if MAIN_DEBUG
     const auto eTime = millis();
     const auto wifiTime = eTime - sTime;
