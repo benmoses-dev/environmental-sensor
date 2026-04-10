@@ -220,7 +220,60 @@ static void logTask(void *pvParameters) {
     }
 }
 
+static void printResetReason(const esp_reset_reason_t reason) {
+    switch (reason) {
+    case ESP_RST_POWERON:
+        ESP_LOGI("RESET", "Power-on reset");
+        break;
+
+    case ESP_RST_EXT:
+        ESP_LOGI("RESET", "External reset (reset pin)");
+        break;
+
+    case ESP_RST_SW:
+        ESP_LOGI("RESET", "Software reset (esp_restart)");
+        break;
+
+    case ESP_RST_PANIC:
+        ESP_LOGI("RESET", "Panic / crash reset");
+        break;
+
+    case ESP_RST_INT_WDT:
+        ESP_LOGI("RESET", "Interrupt watchdog reset");
+        break;
+
+    case ESP_RST_TASK_WDT:
+        ESP_LOGI("RESET", "Task watchdog reset");
+        break;
+
+    case ESP_RST_WDT:
+        ESP_LOGI("RESET", "Other watchdog reset");
+        break;
+
+    case ESP_RST_DEEPSLEEP:
+        ESP_LOGI("RESET", "Wake from deep sleep");
+        break;
+
+    case ESP_RST_BROWNOUT:
+        ESP_LOGI("RESET", "Brownout reset");
+        break;
+
+    case ESP_RST_SDIO:
+        ESP_LOGI("RESET", "SDIO reset");
+        break;
+
+    default:
+        ESP_LOGI("RESET", "Unknown reset reason: %d", reason);
+        break;
+    }
+}
+
 extern "C" void app_main() {
+    const esp_reset_reason_t reason = esp_reset_reason();
+#if MAIN_DEBUG
+    printResetReason(reason);
+#endif
+
     TickType_t startWifi = xTaskGetTickCount();
 
 #if READ_BME280
