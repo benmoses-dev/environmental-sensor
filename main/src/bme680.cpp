@@ -119,17 +119,20 @@ bool Device::init() {
     return true;
 }
 
+bool Device::getShutdown() {
+    taskENTER_CRITICAL(&shutdownMux);
+    const bool shouldStop = shutdown;
+    taskEXIT_CRITICAL(&shutdownMux);
+    return shouldStop;
+}
+
 void Device::start() {
     TickType_t last = xTaskGetTickCount();
     while (true) {
 #if BME680_DEBUG
         const auto sTime = millis();
 #endif
-        bool shouldStop;
-        taskENTER_CRITICAL(&shutdownMux);
-        shouldStop = shutdown;
-        taskEXIT_CRITICAL(&shutdownMux);
-        if (shouldStop) {
+        if (getShutdown()) {
 #if BME680_DEBUG
             ESP_LOGI(TAG, "BME680 read-loop task stopping...");
 #endif
@@ -137,7 +140,7 @@ void Device::start() {
             vTaskDelete(NULL);
             return;
         }
-        if (!performReading()) {
+        if (!storeReading()) {
 #if BME680_DEBUG
             ESP_LOGW(TAG, "Failed to take reading in read-loop!");
 #endif
@@ -156,12 +159,16 @@ void Device::start() {
 
 bool Device::isInitialised() { return initialised; }
 
-void Device::logReadings(QueueHandle_t q) {
-    Reading res{};
+Reading Device::getReading() {
     taskENTER_CRITICAL(&readingMux);
-    res = reading;
+    const Reading res = reading;
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
+    return res;
+}
+
+void Device::logReadings(QueueHandle_t q) {
+    const Reading res = getReading();
     if (res.read) {
 #if BME680_DEBUG
         ESP_LOGW(TAG, "Reading has already been read...");
@@ -184,10 +191,14 @@ void Device::logReadings(QueueHandle_t q) {
     xQueueSend(q, &gEvent, portMAX_DELAY);
 }
 
-bool Device::sleep() {
+void Device::setShutdown() {
     taskENTER_CRITICAL(&shutdownMux);
     shutdown = true;
     taskEXIT_CRITICAL(&shutdownMux);
+}
+
+bool Device::sleep() {
+    setShutdown();
     if (taskHandle) {
         xTaskAbortDelay(taskHandle);
     }
@@ -234,7 +245,7 @@ std::uint32_t Device::beginReading() {
     return measStart + measDur;
 }
 
-bool Device::performReading() {
+bool Device::storeReading() {
     const std::uint32_t measEnd = beginReading();
     if (measEnd == 0) {
 #if BME680_DEBUG
@@ -285,7 +296,7 @@ bool Device::performReading() {
 }
 
 float Device::readAltitude(const float seaLevelPressure) {
-    performReading();
+    storeReading();
     const float atmospheric = reading.pressure / 100.0F;
     return 44330.0 * (1.0 - pow(atmospheric / seaLevelPressure, 0.1903));
 }

@@ -94,17 +94,26 @@ bool Device::init() {
     return true;
 }
 
+void Device::setShutdown() {
+    taskENTER_CRITICAL(&shutdownMux);
+    shutdown = true;
+    taskEXIT_CRITICAL(&shutdownMux);
+}
+
+bool Device::getShutdown() {
+    taskENTER_CRITICAL(&shutdownMux);
+    const bool shouldStop = shutdown;
+    taskEXIT_CRITICAL(&shutdownMux);
+    return shouldStop;
+}
+
 void Device::start() {
     TickType_t last = xTaskGetTickCount();
     while (true) {
 #if BME280_DEBUG
         const auto sTime = millis();
 #endif
-        bool shouldStop;
-        taskENTER_CRITICAL(&shutdownMux);
-        shouldStop = shutdown;
-        taskEXIT_CRITICAL(&shutdownMux);
-        if (shouldStop) {
+        if (getShutdown()) {
 #if BME280_DEBUG
             ESP_LOGI(TAG, "BME280 read-loop task stopping...");
 #endif
@@ -112,7 +121,7 @@ void Device::start() {
             vTaskDelete(NULL);
             return;
         }
-        if (!performReading()) {
+        if (!storeReading()) {
 #if BME280_DEBUG
             ESP_LOGW(TAG, "Failed to take reading in read-loop!");
 #endif
@@ -129,12 +138,16 @@ void Device::start() {
     }
 }
 
-void Device::logReadings(QueueHandle_t q) {
-    Reading res{};
+Reading Device::getReading() {
     taskENTER_CRITICAL(&readingMux);
-    res = reading;
+    const Reading res = reading;
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
+    return res;
+}
+
+void Device::logReadings(QueueHandle_t q) {
+    const Reading res = getReading();
     if (res.read) {
 #if BME280_DEBUG
         ESP_LOGW(TAG, "Reading has already been read...");
@@ -156,9 +169,7 @@ void Device::logReadings(QueueHandle_t q) {
 }
 
 bool Device::sleep() {
-    taskENTER_CRITICAL(&shutdownMux);
-    shutdown = true;
-    taskEXIT_CRITICAL(&shutdownMux);
+    setShutdown();
     if (taskHandle) {
         xTaskAbortDelay(taskHandle);
     }
@@ -184,7 +195,7 @@ bool Device::isDataReady() const {
     return !measuring && !imUpdating;
 }
 
-bool Device::performReading() {
+bool Device::storeReading() {
     const bool result = setMode(MODE_FORCED);
     if (!result) {
 #if BME280_DEBUG

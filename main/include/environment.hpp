@@ -1,18 +1,24 @@
 #pragma once
 
-#include <atomic>
+#include "portmacro.h"
+#include <ctime>
+
+struct EnvironmentState {
+    float temperature, humidity;
+    time_t last;
+    float dewPoint() const;
+};
 
 class Environment {
   public:
-    explicit Environment() {
-        static std::atomic<bool> created = false;
-        bool expected = false;
-        if (!created.compare_exchange_strong(expected, true)) {
-            abort(); // We can remove this if we want multiple environments...
-        }
-    }
+    explicit Environment();
+    EnvironmentState getSnapshot();
     Environment(const Environment &) = delete;
     Environment &operator=(const Environment &) = delete;
 
   private:
+    EnvironmentState state;
+    portMUX_TYPE envMux = portMUX_INITIALIZER_UNLOCKED;
+    void setTemperature(const float temp);
+    void setHumidity(const float hum);
 };

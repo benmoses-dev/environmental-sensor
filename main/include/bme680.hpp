@@ -73,7 +73,10 @@ class Device : public ISensor {
     std::uint32_t beginReading();
     bool endReading();
     std::int32_t remainingReadingMillis();
-    bool performReading();
+    bool storeReading();
+    void setShutdown();
+    bool getShutdown();
+    Reading getReading();
 
     static constexpr std::int32_t NOT_STARTED = -1;
     static constexpr std::int32_t COMPLETE = 0;

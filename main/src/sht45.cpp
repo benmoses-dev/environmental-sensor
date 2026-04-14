@@ -64,17 +64,20 @@ bool Device::init() {
     return true;
 }
 
+bool Device::getShutdown() {
+    taskENTER_CRITICAL(&shutdownMux);
+    const bool shouldStop = shutdown;
+    taskEXIT_CRITICAL(&shutdownMux);
+    return shouldStop;
+}
+
 void Device::start() {
     TickType_t last = xTaskGetTickCount();
     while (true) {
 #if SHT45_DEBUG
         const auto sTime = millis();
 #endif
-        bool shouldStop;
-        taskENTER_CRITICAL(&shutdownMux);
-        shouldStop = shutdown;
-        taskEXIT_CRITICAL(&shutdownMux);
-        if (shouldStop) {
+        if (getShutdown()) {
 #if SHT45_DEBUG
             ESP_LOGI(TAG, "SHT45 read-loop task stopping...");
 #endif
@@ -82,7 +85,7 @@ void Device::start() {
             vTaskDelete(NULL);
             return;
         }
-        if (!performReading()) {
+        if (!storeReading()) {
 #if SHT45_DEBUG
             ESP_LOGW(TAG, "Failed to take reading in read-loop!");
 #endif
@@ -101,12 +104,16 @@ void Device::start() {
 
 bool Device::isInitialised() { return initialised; }
 
-void Device::logReadings(QueueHandle_t q) {
-    Reading res{};
+Reading Device::getReading() {
     taskENTER_CRITICAL(&readingMux);
-    res = reading;
+    const Reading res = reading;
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
+    return res;
+}
+
+void Device::logReadings(QueueHandle_t q) {
+    const Reading res = getReading();
     if (res.read) {
 #if SHT45_DEBUG
         ESP_LOGW(TAG, "Reading has already been read...");
@@ -125,10 +132,14 @@ void Device::logReadings(QueueHandle_t q) {
     xQueueSend(q, &hEvent, portMAX_DELAY);
 }
 
-bool Device::sleep() {
+void Device::setShutdown() {
     taskENTER_CRITICAL(&shutdownMux);
     shutdown = true;
     taskEXIT_CRITICAL(&shutdownMux);
+}
+
+bool Device::sleep() {
+    setShutdown();
     if (taskHandle) {
         xTaskAbortDelay(taskHandle);
     }
@@ -150,7 +161,7 @@ bool Device::reset() {
     return true;
 }
 
-bool Device::performReading() {
+bool Device::storeReading() {
     Reading r{};
     r.valid = false;
     xSemaphoreTake(i2cMutex, portMAX_DELAY);

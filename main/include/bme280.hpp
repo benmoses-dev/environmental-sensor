@@ -137,7 +137,7 @@ class Device : public ISensor {
     void readCalibration();
     bool setMode(const std::uint32_t mode) const;
     bool setSampling() const;
-    bool performReading();
+    bool storeReading();
     bool isDataReady() const;
     bool burstRead(std::int32_t &adcP, std::int32_t &adcT, std::int32_t &adcH);
     float compensateTemperature(const std::int32_t adcT);
@@ -147,6 +147,9 @@ class Device : public ISensor {
     float seaLevelForAltitude(const float altitude, const float atmospheric);
     void setTemperatureCompensation(const float adjustment);
     float getTemperatureCompensation() const;
+    void setShutdown();
+    bool getShutdown();
+    Reading getReading();
 };
 
 } // namespace BME280

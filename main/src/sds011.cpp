@@ -153,10 +153,14 @@ bool Device::wake() {
     return true;
 }
 
-bool Device::sleep() {
+void Device::setShutdown() {
     taskENTER_CRITICAL(&shutdownMux);
     shutdown = true;
     taskEXIT_CRITICAL(&shutdownMux);
+}
+
+bool Device::sleep() {
+    setShutdown();
     if (taskHandle) {
         xTaskAbortDelay(taskHandle);
     }
@@ -204,12 +208,16 @@ bool Device::sleep() {
 
 bool Device::isInitialised() { return initialised; }
 
-void Device::logReadings(QueueHandle_t q) {
-    Reading res{};
+Reading Device::getReading() {
     taskENTER_CRITICAL(&readingMux);
-    res = reading;
+    const Reading res = reading;
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
+    return res;
+}
+
+void Device::logReadings(QueueHandle_t q) {
+    const Reading res = getReading();
     if (res.read || !res.valid) {
 #if SDS011_DEBUG
         ESP_LOGW(TAG, "Reading has already been read or is invalid...");
@@ -248,6 +256,13 @@ bool Device::sendCommand(const std::uint8_t (&frame)[SDS_FRAME_LENGTH]) {
     return true;
 }
 
+bool Device::getShutdown() {
+    taskENTER_CRITICAL(&shutdownMux);
+    const bool shouldStop = shutdown;
+    taskEXIT_CRITICAL(&shutdownMux);
+    return shouldStop;
+}
+
 void Device::start() {
     std::uint8_t frame[SDS_RESPONSE_LENGTH];
     TickType_t startLoop = xTaskGetTickCount();
@@ -256,11 +271,7 @@ void Device::start() {
         const auto sTime = millis();
         ESP_LOGI(TAG, "Start loop time: %u", sTime);
 #endif
-        bool shouldStop;
-        taskENTER_CRITICAL(&shutdownMux);
-        shouldStop = shutdown;
-        taskEXIT_CRITICAL(&shutdownMux);
-        if (shouldStop) {
+        if (getShutdown()) {
             ESP_LOGI(TAG, "SDS011 read-loop task stopping...");
             xSemaphoreGive(shutdownAck);
             vTaskDelete(NULL);

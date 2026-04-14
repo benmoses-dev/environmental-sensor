@@ -59,8 +59,11 @@ class Device : public ISensor {
     Reading reading;
     portMUX_TYPE readingMux = portMUX_INITIALIZER_UNLOCKED;
 
-    bool performReading();
+    bool storeReading();
     bool reset();
+    void setShutdown();
+    bool getShutdown();
+    Reading getReading();
 };
 
 } // namespace SHT45

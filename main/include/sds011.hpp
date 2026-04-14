@@ -74,6 +74,9 @@ class Device : public ISensor {
     bool readResponse(std::uint8_t (&res)[SDS_RESPONSE_LENGTH],
                       TickType_t timeout = pdMS_TO_TICKS(1000));
     bool wake();
+    void setShutdown();
+    bool getShutdown();
+    Reading getReading();
 };
 
 } // namespace SDS011

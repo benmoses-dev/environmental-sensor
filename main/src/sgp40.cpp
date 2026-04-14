@@ -65,9 +65,8 @@ void Device::start() {
 #if SGP40_DEBUG
         const auto sTime = millis();
 #endif
-        bool shouldStop;
         taskENTER_CRITICAL(&shutdownMux);
-        shouldStop = shutdown;
+        bool shouldStop = shutdown;
         taskEXIT_CRITICAL(&shutdownMux);
         if (shouldStop) {
 #if SGP40_DEBUG
@@ -97,9 +96,8 @@ void Device::start() {
 bool Device::isInitialised() { return initialised; }
 
 void Device::logReadings(QueueHandle_t q) {
-    Reading res{};
     taskENTER_CRITICAL(&readingMux);
-    res = reading;
+    Reading res = reading;
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
     if (res.read) {

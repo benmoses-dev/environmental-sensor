@@ -49,7 +49,7 @@ class Device : public ISensor {
     static constexpr std::uint32_t SINGLE_SHOT_FREQ_MS =
         std::max(SCD41_SINGLE_SHOT_FREQ_MS, READING_DURATION_MS);
 
-    bool getReading();
+    bool storeReading();
     bool startPeriodicMeasurement();
     bool startLowPowerPeriodicMeasurement();
     bool singleShot();
@@ -59,6 +59,9 @@ class Device : public ISensor {
     bool wake();
     bool readMeasurement(std::uint8_t *buffer);
     bool isDataReady();
+    void setShutdown();
+    bool getShutdown();
+    Reading getReading();
 
     static constexpr std::uint16_t CMD_START_PERIODIC_MEASUREMENT = 0x21B1;
     static constexpr std::uint16_t CMD_STOP_PERIODIC_MEASUREMENT = 0x3F86;

@@ -60,17 +60,20 @@ bool Device::init() {
     return true;
 }
 
+bool Device::getShutdown() {
+    taskENTER_CRITICAL(&shutdownMux);
+    const bool shouldStop = shutdown;
+    taskEXIT_CRITICAL(&shutdownMux);
+    return shouldStop;
+}
+
 void Device::start() {
     TickType_t last = xTaskGetTickCount();
     while (true) {
 #if SCD41_DEBUG
         const auto sTime = millis();
 #endif
-        bool shouldStop;
-        taskENTER_CRITICAL(&shutdownMux);
-        shouldStop = shutdown;
-        taskEXIT_CRITICAL(&shutdownMux);
-        if (shouldStop) {
+        if (getShutdown()) {
             ESP_LOGI(TAG, "SCD41 read-loop task stopping...");
             xSemaphoreGive(shutdownAck);
             vTaskDelete(NULL);
@@ -84,7 +87,7 @@ void Device::start() {
             vTaskDelayUntil(&last, pdMS_TO_TICKS(SINGLE_SHOT_FREQ_MS));
             continue;
         }
-        if (!getReading()) {
+        if (!storeReading()) {
 #if SCD41_DEBUG
             ESP_LOGE(TAG, "Failed to get reading!");
 #endif
@@ -103,10 +106,14 @@ void Device::start() {
 
 bool Device::isInitialised() { return initialised; }
 
-bool Device::sleep() {
+void Device::setShutdown() {
     taskENTER_CRITICAL(&shutdownMux);
     shutdown = true;
     taskEXIT_CRITICAL(&shutdownMux);
+}
+
+bool Device::sleep() {
+    setShutdown();
     if (taskHandle) {
         xTaskAbortDelay(taskHandle);
     }
@@ -127,12 +134,16 @@ bool Device::sleep() {
     return stopped && res;
 }
 
-void Device::logReadings(QueueHandle_t q) {
-    Reading res{};
+Reading Device::getReading() {
     taskENTER_CRITICAL(&readingMux);
-    res = reading;
+    const Reading res = reading;
     reading.read = true;
     taskEXIT_CRITICAL(&readingMux);
+    return res;
+}
+
+void Device::logReadings(QueueHandle_t q) {
+    const Reading res = getReading();
     if (res.read) {
 #if SCD41_DEBUG
         ESP_LOGW(TAG, "Reading has already been read...");
@@ -149,7 +160,7 @@ void Device::logReadings(QueueHandle_t q) {
     xQueueSend(q, &co2Event, portMAX_DELAY);
 }
 
-bool Device::getReading() {
+bool Device::storeReading() {
     const bool ready = isDataReady();
     if (!ready) {
 #if SCD41_DEBUG
