@@ -37,6 +37,7 @@ struct MainContext {
     const QueueHandle_t eventQueue;
     const WIFI &wifi;
     MQTT &mqtt;
+    Environment &env;
 };
 
 SemaphoreHandle_t i2cMutex = nullptr;
@@ -326,27 +327,28 @@ extern "C" void app_main() {
 #endif
 
     TickType_t startWifi = xTaskGetTickCount();
+    static Environment env;
 
 #if READ_BME280
-    static BME280::Device bme280;
+    static BME280::Device bme280(env);
 #endif
 #if READ_BME680
-    static BME680::Device bme680;
+    static BME680::Device bme680(env);
 #endif
 #if READ_SDS011
     static SDS011::Device sds;
 #endif
 #if READ_SCD41
-    static SCD41::Device scd;
+    static SCD41::Device scd(env);
 #endif
 #if READ_SHT45
-    static SHT45::Device sht45;
+    static SHT45::Device sht45(env);
 #endif
 #if READ_SGP40
-    static SGP40::Device sgp40;
+    static SGP40::Device sgp40(env);
 #endif
 #if READ_SGP41
-    static SGP41::Device sgp41;
+    static SGP41::Device sgp41(env);
 #endif
     static ISensor *sensors[] = {
 #if READ_BME280
@@ -387,7 +389,7 @@ extern "C" void app_main() {
     static WIFI wifi;
     static MQTT mqtt;
     static MainContext context = {
-        sensors, SENSOR_COUNT, mainLoopPeriod, eventQueue, wifi, mqtt,
+        sensors, SENSOR_COUNT, mainLoopPeriod, eventQueue, wifi, mqtt, env,
     };
 
     const std::uint32_t warmupPeriod = getWarmupTime(&context);

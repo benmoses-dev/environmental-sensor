@@ -3,6 +3,7 @@
 #include "bme68x_defs.h"
 #include "config.hpp"
 #include "driver/i2c.h"
+#include "environment.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/idf_additions.h"
 #include "freertos/queue.h"
@@ -25,7 +26,7 @@ struct Reading {
 
 class Device : public ISensor {
   public:
-    explicit Device(const i2c_port_t port = I2C_MASTER_NUM,
+    explicit Device(Environment &e, const i2c_port_t port = I2C_MASTER_NUM,
                     const std::uint8_t addr = BME680_ADDR);
     ~Device();
 
@@ -41,6 +42,7 @@ class Device : public ISensor {
     void start();
 
   private:
+    Environment &env;
     const i2c_port_t i2c_port;
     const std::uint8_t i2c_addr;
     std::int32_t _sensorID;

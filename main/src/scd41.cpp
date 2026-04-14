@@ -15,8 +15,8 @@ void scdTask(void *pvParameters) {
     scd->start();
 }
 
-Device::Device(const i2c_port_t port, const std::uint8_t addr)
-    : i2c_port(port), i2c_addr(addr), initialised(false), shutdown(false) {}
+Device::Device(Environment &e, const i2c_port_t port, const std::uint8_t addr)
+    : env(e), i2c_port(port), i2c_addr(addr), initialised(false), shutdown(false) {}
 
 Device::~Device() {
     if (shutdownAck) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.hpp"
+#include "environment.hpp"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "sensor.hpp"
@@ -20,7 +21,7 @@ struct Reading {
 
 class Device : public ISensor {
   public:
-    explicit Device(const i2c_port_t port = I2C_MASTER_NUM,
+    explicit Device(Environment &e, const i2c_port_t port = I2C_MASTER_NUM,
                     const std::uint8_t addr = SCD41_ADDR);
     ~Device();
 
@@ -36,6 +37,7 @@ class Device : public ISensor {
     void logReadings(QueueHandle_t q) override;
 
   private:
+    Environment &env;
     const i2c_port_t i2c_port;
     const std::uint8_t i2c_addr;
     Reading reading;
