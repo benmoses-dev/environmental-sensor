@@ -99,6 +99,7 @@ static void shutdownSensors(const MainContext *context) {
 #if MAIN_DEBUG
     ESP_LOGI(TAG, "Shutting down sensors...");
 #endif
+    context->mqtt.publish("info", "Shutting down sensors...");
     ISensor *s;
     for (std::size_t i = 0; i < context->sensorCount; ++i) {
         s = context->sensors[i];
@@ -223,47 +224,47 @@ static void logTask(void *pvParameters) {
 static void publishResetReason(const esp_reset_reason_t reason, MQTT &mqtt) {
     switch (reason) {
     case ESP_RST_POWERON:
-        mqtt.publish("reset", "Power-on reset");
+        mqtt.publish("info", "Power-on reset");
         break;
 
     case ESP_RST_EXT:
-        mqtt.publish("reset", "External reset (reset pin)");
+        mqtt.publish("info", "External reset (reset pin)");
         break;
 
     case ESP_RST_SW:
-        mqtt.publish("reset", "Software reset (esp_restart)");
+        mqtt.publish("info", "Software reset (esp_restart)");
         break;
 
     case ESP_RST_PANIC:
-        mqtt.publish("reset", "Panic / crash reset");
+        mqtt.publish("info", "Panic / crash reset");
         break;
 
     case ESP_RST_INT_WDT:
-        mqtt.publish("reset", "Interrupt watchdog reset");
+        mqtt.publish("info", "Interrupt watchdog reset");
         break;
 
     case ESP_RST_TASK_WDT:
-        mqtt.publish("reset", "Task watchdog reset");
+        mqtt.publish("info", "Task watchdog reset");
         break;
 
     case ESP_RST_WDT:
-        mqtt.publish("reset", "Other watchdog reset");
+        mqtt.publish("info", "Other watchdog reset");
         break;
 
     case ESP_RST_DEEPSLEEP:
-        mqtt.publish("reset", "Wake from deep sleep");
+        mqtt.publish("info", "Wake from deep sleep");
         break;
 
     case ESP_RST_BROWNOUT:
-        mqtt.publish("reset", "Brownout reset");
+        mqtt.publish("info", "Brownout reset");
         break;
 
     case ESP_RST_SDIO:
-        mqtt.publish("reset", "SDIO reset");
+        mqtt.publish("info", "SDIO reset");
         break;
 
     default:
-        mqtt.publish("reset", "Unknown reset reason");
+        mqtt.publish("info", "Unknown reset reason");
         break;
     }
 }
@@ -433,6 +434,7 @@ extern "C" void app_main() {
 #if MAIN_DEBUG
         ESP_LOGE(TAG, "Failed to initialise i2c!");
 #endif
+        mqtt.publish("info", "Failed to initialise i2c!");
         goToSleep(sleepPeriod);
     }
     i2cMutex = xSemaphoreCreateMutex();
@@ -440,6 +442,7 @@ extern "C" void app_main() {
 #if MAIN_DEBUG
         ESP_LOGE(TAG, "Could not create i2c mutex, aborting...");
 #endif
+        mqtt.publish("info", "Could not create i2c mutex, aborting...");
         goToSleep(sleepPeriod);
     }
 
@@ -457,6 +460,7 @@ extern "C" void app_main() {
 #if MAIN_DEBUG
         ESP_LOGE(TAG, "No Sensors initialised!");
 #endif
+        mqtt.publish("info", "No Sensors initialised!");
         goToSleep(sleepPeriod);
     }
 #if MAIN_DEBUG
