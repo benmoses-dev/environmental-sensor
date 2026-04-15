@@ -6,7 +6,6 @@
 struct EnvironmentState {
     float temperature, humidity;
     time_t last;
-    float dewPoint() const;
 };
 
 class Environment {
@@ -15,8 +14,8 @@ class Environment {
     Environment(const Environment &) = delete;
     Environment &operator=(const Environment &) = delete;
     EnvironmentState getSnapshot();
-    void setTemperature(const float temp);
-    void setHumidity(const float hum);
+    void setTemperature(const float temp, const time_t t);
+    void setHumidity(const float hum, const time_t t);
 
   private:
     EnvironmentState state;

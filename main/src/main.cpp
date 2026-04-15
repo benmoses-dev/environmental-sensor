@@ -37,7 +37,6 @@ struct MainContext {
     const QueueHandle_t eventQueue;
     const WIFI &wifi;
     MQTT &mqtt;
-    Environment &env;
 };
 
 SemaphoreHandle_t i2cMutex = nullptr;
@@ -204,6 +203,27 @@ static void publishReadings(const MainContext *context, const std::uint32_t port
             ESP_LOGI(TAG, "NOX : %.2f", event.val);
 #endif
             context->mqtt.publish("nox", buf);
+            break;
+
+        case EventType::DEW:
+#if MAIN_DEBUG
+            ESP_LOGI(TAG, "Dew Point : %.2f", event.val);
+#endif
+            context->mqtt.publish("dew_point", buf);
+            break;
+
+        case EventType::VPD:
+#if MAIN_DEBUG
+            ESP_LOGI(TAG, "Vapour Pressure Deficit : %.2f", event.val);
+#endif
+            context->mqtt.publish("vpd", buf);
+            break;
+
+        case EventType::AH:
+#if MAIN_DEBUG
+            ESP_LOGI(TAG, "Absolute Humidity : %.2f", event.val);
+#endif
+            context->mqtt.publish("abs_humidity", buf);
             break;
 
         default:
@@ -389,7 +409,7 @@ extern "C" void app_main() {
     static WIFI wifi;
     static MQTT mqtt;
     static MainContext context = {
-        sensors, SENSOR_COUNT, mainLoopPeriod, eventQueue, wifi, mqtt, env,
+        sensors, SENSOR_COUNT, mainLoopPeriod, eventQueue, wifi, mqtt,
     };
 
     const std::uint32_t warmupPeriod = getWarmupTime(&context);
@@ -480,7 +500,7 @@ extern "C" void app_main() {
 #if MAIN_DEBUG
         ESP_LOGI(TAG, "Continuous mode - starting tasks and returning from main...");
 #endif
-        xTaskCreate(readTask, "ReadTask", 4096, &context, 6, NULL);
+        xTaskCreate(readTask, "ReadTask", 4096, &context, 4, NULL);
         xTaskCreate(logTask, "LogTask", 4096, &context, 3, NULL);
         return;
     }

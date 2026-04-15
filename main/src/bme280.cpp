@@ -160,11 +160,8 @@ void Device::logReadings(QueueHandle_t q) {
 #endif
         return;
     }
-    const Event tEvent = {res.temperature, res.tval, EventType::TEMP};
-    const Event hEvent = {res.humidity, res.tval, EventType::HUM};
+    sendCombinedMetrics(res.temperature, res.humidity, res.tval, q);
     const Event pEvent = {res.pressure, res.tval, EventType::PRES};
-    xQueueSend(q, &tEvent, portMAX_DELAY);
-    xQueueSend(q, &hEvent, portMAX_DELAY);
     xQueueSend(q, &pEvent, portMAX_DELAY);
 }
 
@@ -236,6 +233,8 @@ bool Device::storeReading() {
     taskENTER_CRITICAL(&readingMux);
     reading = res;
     taskEXIT_CRITICAL(&readingMux);
+    env.setTemperature(res.temperature, res.tval);
+    env.setHumidity(res.humidity, res.tval);
     return true;
 }
 
