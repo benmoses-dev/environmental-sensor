@@ -1,11 +1,11 @@
 # Environmental Sensor
 
-An ESP32-based indoor environmental monitoring system that measures and publishes readings to an MQTT broker.
+An ESP32-based environmental monitoring system that measures and publishes readings to an MQTT broker.
 
 ## Features
 
-- BME280, BME680, SCD41, and SDS011 support
-- Temperature, humidity, pressure, CO2, VOC, PM2.5, and PM10 readings
+- SHT45, BME280, BME680, SGP40/41, SCD41, and SDS011 support
+- Temperature, humidity, pressure, CO2, VOC, NOX, PM2.5, and PM10 readings
 - WiFi connectivity and MQTT publishing
 - Modular sensor driver implementation with multiple configurations
 
