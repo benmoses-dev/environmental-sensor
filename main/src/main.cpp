@@ -207,21 +207,21 @@ static void publishReadings(const MainContext *context, const std::uint32_t port
 
         case EventType::DEW:
 #if MAIN_DEBUG
-            ESP_LOGI(TAG, "Dew Point : %.2f", event.val);
+            ESP_LOGI(TAG, "Dew Point : %.2f °C", event.val);
 #endif
             context->mqtt.publish("dew_point", buf);
             break;
 
         case EventType::VPD:
 #if MAIN_DEBUG
-            ESP_LOGI(TAG, "Vapour Pressure Deficit : %.2f", event.val);
+            ESP_LOGI(TAG, "Vapour Pressure Deficit : %.2f kPa", event.val);
 #endif
             context->mqtt.publish("vpd", buf);
             break;
 
         case EventType::AH:
 #if MAIN_DEBUG
-            ESP_LOGI(TAG, "Absolute Humidity : %.2f", event.val);
+            ESP_LOGI(TAG, "Absolute Humidity : %.2f g/m³", event.val);
 #endif
             context->mqtt.publish("abs_humidity", buf);
             break;

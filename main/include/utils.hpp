@@ -39,28 +39,22 @@ inline std::uint8_t getCRC8(const std::uint8_t *data) {
  */
 inline void sendCombinedMetrics(const float temp, const float hum, const time_t tval,
                                 const QueueHandle_t q) {
+    if (!std::isfinite(temp) || !std::isfinite(hum)) {
+        return;
+    }
     constexpr float A_W = 17.62f;
     constexpr float B_W = 243.12f;
     constexpr float A_I = 22.46f;
     constexpr float B_I = 272.62f;
     const float a = (temp >= 0.0f) ? A_W : A_I;
     const float b = (temp >= 0.0f) ? B_W : B_I;
-    if ((b + temp) == 0.0f || hum == 0.0f) {
-        return;
-    }
     const float gamma_s = (a * temp) / (b + temp);
     const float es = 6.112f * expf(gamma_s);
-    const float rh = hum * 0.01f;
+    const float rh = fminf(fmaxf(hum * 0.01f, 1e-4f), 1.0f);
     const float e = es * rh;
-    const float vpd = es - e;
+    const float vpd = (es - e) * 0.1f;
     const float gamma = logf(rh) + gamma_s;
-    if ((a - gamma) == 0.0f) {
-        return;
-    }
     const float dewPoint = (b * gamma) / (a - gamma);
-    if ((temp + 273.15f) == 0.0f) {
-        return;
-    }
     const float absHumidity = (216.7f * e) / (temp + 273.15f);
     const Event tEvent = {temp, tval, EventType::TEMP};
     const Event hEvent = {hum, tval, EventType::HUM};
