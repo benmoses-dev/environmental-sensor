@@ -169,8 +169,10 @@ bool WIFI::init() {
         }
     }
     wifi_config_t wifi_config = {};
-    strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid));
-    strncpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password));
+    strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
+    strncpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password) - 1);
+    wifi_config.sta.ssid[sizeof(wifi_config.sta.ssid) - 1] = '\0';
+    wifi_config.sta.password[sizeof(wifi_config.sta.password) - 1] = '\0';
 #if WIFI_DEBUG
     ESP_LOGI(TAG, "Setting WiFi mode...");
 #endif

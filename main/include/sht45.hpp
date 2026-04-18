@@ -28,7 +28,7 @@ class Device : public ISensor {
     ~Device();
 
     bool init() override;
-    std::uint32_t getInitTime() override { return 5; };
+    std::uint32_t getInitTime() override { return 10; };
     std::uint32_t getDataReadyTime() override { return READING_DURATION_MS; };
     std::uint32_t getLoopTime() override { return SHT45_READ_FREQ_MS; };
     void logReadings(QueueHandle_t q) override;
