@@ -25,7 +25,7 @@ void WIFI::wifiEventHandler(void *arg, esp_event_base_t base, std::int32_t id,
         ESP_LOGI(TAG, "Retrying connection...");
 #endif
         xEventGroupClearBits(self->weg, WIFI::CONNECTED_BIT);
-        self->connected = false;
+        self->connected.store(false, std::memory_order_release);
         esp_wifi_connect();
         break;
     default:
@@ -41,25 +41,23 @@ void WIFI::ipEventHandler(void *arg, esp_event_base_t base, std::int32_t id, voi
     ip_event_got_ip_t *event;
     switch (id) {
     case IP_EVENT_STA_GOT_IP:
-        event = (ip_event_got_ip_t *)data;
+        event = static_cast<ip_event_got_ip_t *>(data);
 #if WIFI_DEBUG
         ESP_LOGI(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
 #endif
-        self->connected = true;
         xEventGroupSetBits(self->weg, WIFI::CONNECTED_BIT);
+        self->connected.store(true, std::memory_order_release);
         break;
     case IP_EVENT_STA_LOST_IP:
         xEventGroupClearBits(self->weg, WIFI::CONNECTED_BIT);
-        self->connected = false;
+        self->connected.store(false, std::memory_order_release);
         break;
     default:
         break;
     }
 }
 
-WIFI::WIFI() : connected(false), ssid(CONFIG_WIFI_SSID), pass(CONFIG_WIFI_PASS) {}
-
-WIFI::~WIFI() {}
+WIFI::WIFI() : ssid(CONFIG_WIFI_SSID), pass(CONFIG_WIFI_PASS) {}
 
 bool WIFI::init() {
 #if WIFI_DEBUG
@@ -173,6 +171,7 @@ bool WIFI::init() {
     strncpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password) - 1);
     wifi_config.sta.ssid[sizeof(wifi_config.sta.ssid) - 1] = '\0';
     wifi_config.sta.password[sizeof(wifi_config.sta.password) - 1] = '\0';
+    wifi_config.sta.failure_retry_cnt = 10;
 #if WIFI_DEBUG
     ESP_LOGI(TAG, "Setting WiFi mode...");
 #endif

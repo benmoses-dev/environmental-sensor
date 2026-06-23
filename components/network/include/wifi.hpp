@@ -3,13 +3,18 @@
 #include "esp_wifi.h"
 #include <cstdint>
 #include <ctime>
+#include <atomic>
 
 class WIFI {
   public:
     explicit WIFI();
-    ~WIFI();
+    WIFI(const WIFI &) = delete;
+    WIFI(const WIFI &&) = delete;
+    ~WIFI() = default;
+    WIFI &operator=(const WIFI &) = delete;
+    WIFI &operator=(const WIFI &&) = delete;
     static const std::int32_t CONNECTED_BIT = BIT0;
-    volatile bool connected;
+    std::atomic<bool> connected = false;
     bool init();
     bool initTime() const;
     time_t getTime() const;
