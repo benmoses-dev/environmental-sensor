@@ -20,13 +20,17 @@ EnvironmentState Environment::getSnapshot() {
 }
 void Environment::setTemperature(const float temp, const time_t t) {
     taskENTER_CRITICAL(&envMux);
-    state.temperature = temp;
-    state.last = std::max(state.last, t);
+    if (t > state.last) {
+        state.last = t;
+        state.temperature = temp;
+    }
     taskEXIT_CRITICAL(&envMux);
 }
 void Environment::setHumidity(const float hum, const time_t t) {
     taskENTER_CRITICAL(&envMux);
-    state.humidity = hum;
-    state.last = std::max(state.last, t);
+    if (t > state.last) {
+        state.last = t;
+        state.humidity = hum;
+    }
     taskEXIT_CRITICAL(&envMux);
 }

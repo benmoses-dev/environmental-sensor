@@ -11,8 +11,11 @@ struct EnvironmentState {
 class Environment {
   public:
     explicit Environment();
+    ~Environment() = default;
     Environment(const Environment &) = delete;
+    Environment(const Environment &&) = delete;
     Environment &operator=(const Environment &) = delete;
+    Environment &operator=(const Environment &&) = delete;
     EnvironmentState getSnapshot();
     void setTemperature(const float temp, const time_t t);
     void setHumidity(const float hum, const time_t t);
