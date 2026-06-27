@@ -1,6 +1,7 @@
 #include "bme280.hpp"
 #include "bme680.hpp"
 #include "config.hpp"
+#include "context.hpp"
 #include "environment.hpp"
 #include "esp_log.h"
 #include "esp_sleep.h"
@@ -10,15 +11,12 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "i2c.hpp"
-#include "mqtt.hpp"
 #include "scd41.hpp"
 #include "sds011.hpp"
-#include "sensor.hpp"
 #include "sgp40.hpp"
 #include "sgp41.hpp"
 #include "sht45.hpp"
 #include "utils.hpp"
-#include "wifi.hpp"
 #include <algorithm>
 #include <iterator>
 #include <limits>
@@ -30,32 +28,7 @@ static constexpr bool shouldInitI2C() {
            READ_SGP41;
 }
 
-struct MainContext {
-    ISensor **sensors;
-    const std::size_t sensorCount;
-    const std::uint32_t mainLoopMS;
-    const QueueHandle_t eventQueue;
-    const WIFI &wifi;
-    MQTT &mqtt;
-};
-
 SemaphoreHandle_t i2cMutex = nullptr;
-
-static std::uint32_t getWarmupTime(const MainContext *context) {
-    std::uint32_t warmupTime = 0;
-    std::uint32_t initSoFar = 0;
-    ISensor *s;
-    for (std::size_t i = 0; i < context->sensorCount; ++i) {
-        s = context->sensors[i];
-        const std::uint32_t at = s->getInitTime() + s->getDataReadyTime();
-        warmupTime = std::max(warmupTime, at + initSoFar);
-        initSoFar += s->getInitTime();
-    }
-#if MAIN_DEBUG
-    ESP_LOGI(TAG, "Warmup time: %u", warmupTime);
-#endif
-    return warmupTime;
-}
 
 static std::uint32_t getMainLoopTime(ISensor **sensors, const std::size_t sensorCount) {
     std::uint32_t mainLoopTime = std::numeric_limits<std::uint32_t>::max();
@@ -68,16 +41,6 @@ static std::uint32_t getMainLoopTime(ISensor **sensors, const std::size_t sensor
     ESP_LOGI(TAG, "Main loop time: %u", mainLoopTime);
 #endif
     return mainLoopTime;
-}
-
-static void toJson(const Event &event, char *buf, const std::size_t size) {
-    const std::int32_t n = snprintf(buf, size, "{\"time\":%lld,\"val\":%.2f}",
-                                    static_cast<long long>(event.timestamp), event.val);
-    if (n < 0 || n >= size) {
-#if MAIN_DEBUG
-        ESP_LOGW("MQTT", "JSON string truncated!");
-#endif
-    }
 }
 
 static void goToSleep(const std::uint32_t sleepPeriod) {
@@ -95,154 +58,23 @@ static void goToSleep(const std::uint32_t sleepPeriod) {
     esp_restart();
 }
 
-static void shutdownSensors(const MainContext *context) {
-#if MAIN_DEBUG
-    ESP_LOGI(TAG, "Shutting down sensors...");
-#endif
-    context->mqtt.publish("info", "Shutting down sensors...");
-    ISensor *s;
-    for (std::size_t i = 0; i < context->sensorCount; ++i) {
-        s = context->sensors[i];
-        if (s->isInitialised()) {
-            s->sleep();
-        }
-    }
-}
-
-static void takeReadings(const MainContext *context) {
-    ISensor *s;
-    for (std::size_t i = 0; i < context->sensorCount; ++i) {
-        s = context->sensors[i];
-        if (s->isInitialised()) {
-            s->logReadings(context->eventQueue);
-        }
-    }
-}
-
 static void readTask(void *pvParameters) {
     TickType_t last = xTaskGetTickCount();
     const MainContext *context = static_cast<const MainContext *>(pvParameters);
     while (true) {
-        takeReadings(context);
+        context->takeReadings();
         vTaskDelayUntil(&last, pdMS_TO_TICKS(context->mainLoopMS));
-    }
-}
-
-static void publishReadings(const MainContext *context, const std::uint32_t portDelay) {
-    if (!context->wifi.connected || !context->mqtt.connected) {
-#if MAIN_DEBUG
-        ESP_LOGE(TAG, "WiFi or MQTT disconnected, returning from publishReadings...");
-#endif
-        return;
-    }
-    Event event;
-    while (xQueueReceive(context->eventQueue, &event, pdMS_TO_TICKS(portDelay)) ==
-           pdTRUE) {
-        const std::size_t len = 64;
-        char buf[len];
-        toJson(event, buf, len);
-        switch (event.type) {
-        case EventType::TEMP:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "Temp: %.2f °C", event.val);
-#endif
-            context->mqtt.publish("temperature", buf);
-            break;
-
-        case EventType::HUM:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "Humidity: %.2f %%", event.val);
-#endif
-            context->mqtt.publish("humidity", buf);
-            break;
-
-        case EventType::PRES:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "Pressure: %.2f hPa", event.val / 100.0f);
-#endif
-            context->mqtt.publish("pressure", buf);
-            break;
-
-        case EventType::GAS:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "Gas: %.2f kΩ", event.val / 1000.0f);
-#endif
-            context->mqtt.publish("gas", buf);
-            break;
-
-        case EventType::PM2_5:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "PM2.5: %.2f ug/m3", event.val);
-#endif
-            context->mqtt.publish("pm2_5", buf);
-            break;
-
-        case EventType::PM10:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "PM10 : %.2f ug/m3", event.val);
-#endif
-            context->mqtt.publish("pm10", buf);
-            break;
-
-        case EventType::CO2:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "CO2 : %.2f ppm", event.val);
-#endif
-            context->mqtt.publish("co2", buf);
-            break;
-
-        case EventType::VOC:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "VOC : %.2f", event.val);
-#endif
-            context->mqtt.publish("voc", buf);
-            break;
-
-        case EventType::NOX:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "NOX : %.2f", event.val);
-#endif
-            context->mqtt.publish("nox", buf);
-            break;
-
-        case EventType::DEW:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "Dew Point : %.2f °C", event.val);
-#endif
-            context->mqtt.publish("dew_point", buf);
-            break;
-
-        case EventType::VPD:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "Vapour Pressure Deficit : %.2f kPa", event.val);
-#endif
-            context->mqtt.publish("vpd", buf);
-            break;
-
-        case EventType::AH:
-#if MAIN_DEBUG
-            ESP_LOGI(TAG, "Absolute Humidity : %.2f g/m³", event.val);
-#endif
-            context->mqtt.publish("abs_humidity", buf);
-            break;
-
-        default:
-#if MAIN_DEBUG
-            ESP_LOGE(TAG, "Unknown event type");
-#endif
-            break;
-        }
     }
 }
 
 static void logTask(void *pvParameters) {
     const MainContext *context = static_cast<const MainContext *>(pvParameters);
     while (true) {
-        publishReadings(context, 1500);
+        context->publishReadings(1500);
     }
 }
 
-static void publishResetReason(const esp_reset_reason_t reason, MQTT &mqtt) {
+static void publishResetReason(const esp_reset_reason_t reason, Logger &logger) {
     std::string r;
     switch (reason) {
     case ESP_RST_POWERON:
@@ -290,10 +122,7 @@ static void publishResetReason(const esp_reset_reason_t reason, MQTT &mqtt) {
         break;
     }
 
-#if MAIN_DEBUG
-    ESP_LOGI("RESET", "%s", r);
-#endif
-    mqtt.publish("info", r.c_str());
+    logger.logInfo(TAG, r.c_str());
 }
 
 extern "C" void app_main() {
@@ -359,11 +188,11 @@ extern "C" void app_main() {
     static const QueueHandle_t eventQueue = xQueueCreate(1000, sizeof(Event));
     static WIFI wifi;
     static MQTT mqtt;
-    static MainContext context = {
-        sensors, SENSOR_COUNT, mainLoopPeriod, eventQueue, wifi, mqtt,
-    };
+    static Logger logger{mqtt};
+    static MainContext context{mainLoopPeriod, sensors, SENSOR_COUNT, eventQueue,
+                               wifi,           mqtt,    logger};
 
-    const std::uint32_t warmupPeriod = getWarmupTime(&context);
+    const std::uint32_t warmupPeriod = context.getWarmupTime();
     constexpr std::uint32_t WIFI_CONNECT_TIME_MS = 10'000;
     const std::uint32_t sleepPeriod = static_cast<std::uint32_t>(std::max(
         static_cast<int>(MEASUREMENT_PERIOD_MS) - static_cast<int>(warmupPeriod) -
@@ -392,7 +221,7 @@ extern "C" void app_main() {
         goToSleep(sleepPeriod);
     }
     const esp_reset_reason_t reason = esp_reset_reason();
-    publishResetReason(reason, mqtt);
+    publishResetReason(reason, logger);
 #if MAIN_DEBUG
     const auto eTime = millis();
     const auto wifiTime = eTime - sTime;
@@ -457,9 +286,9 @@ extern "C" void app_main() {
         return;
     }
 
-    takeReadings(&context);
-    shutdownSensors(&context);
-    publishReadings(&context, 0);
+    context.takeReadings();
+    context.shutdownSensors();
+    context.publishReadings(0);
     const TickType_t timeoutTicks = pdMS_TO_TICKS(5000);
     if (!mqtt.waitForPublishes(timeoutTicks)) {
 #if MAIN_DEBUG
