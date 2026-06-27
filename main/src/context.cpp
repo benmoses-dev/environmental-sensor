@@ -2,6 +2,8 @@
 #include "config.hpp"
 #include "esp_log.h"
 #include "events.hpp"
+#include <algorithm>
+#include <limits>
 #include <string>
 
 static const char *TAG = "MAIN";
@@ -16,10 +18,20 @@ static void toJson(const Event &event, char *buf, const std::size_t size) {
     }
 }
 
-MainContext::MainContext(const std::uint32_t ml, ISensor **s, const std::size_t sc,
-                         const QueueHandle_t eq, const WIFI &w, MQTT &m, Logger &l)
-    : mainLoopMS(ml), sensors(s), sensorCount(sc), eventQueue(eq), wifi(w), mqtt(m),
-      logger(l) {};
+MainContext::MainContext(ISensor **s, const std::size_t sc, const QueueHandle_t eq,
+                         const WIFI &w, MQTT &m, Logger &l)
+    : sensors(s), sensorCount(sc), eventQueue(eq), wifi(w), mqtt(m), logger(l) {
+    std::uint32_t mainLoopTime = std::numeric_limits<std::uint32_t>::max();
+    ISensor *sensor;
+    for (std::size_t i = 0; i < sensorCount; ++i) {
+        sensor = sensors[i];
+        mainLoopTime = std::min(mainLoopTime, sensor->getLoopTime());
+    }
+#if MAIN_DEBUG
+    ESP_LOGI(TAG, "Main loop time: %u", mainLoopTime);
+#endif
+    mainLoopMS = mainLoopTime;
+};
 
 std::uint32_t MainContext::getWarmupTime() {
     std::uint32_t warmupTime = 0;

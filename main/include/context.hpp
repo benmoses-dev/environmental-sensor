@@ -8,8 +8,8 @@
 
 class MainContext {
   public:
-    explicit MainContext(const std::uint32_t ml, ISensor **s, const std::size_t sc,
-                         const QueueHandle_t eq, const WIFI &w, MQTT &m, Logger &l);
+    explicit MainContext(ISensor **s, const std::size_t sc, const QueueHandle_t eq,
+                         const WIFI &w, MQTT &m, Logger &l);
 
     ~MainContext() = default; // This class does not own these resources
     MainContext(const MainContext &) = delete;
@@ -20,8 +20,9 @@ class MainContext {
     std::uint32_t getWarmupTime();
     void shutdownSensors();
     void takeReadings() const;
-    const std::uint32_t mainLoopMS;
     void publishReadings(const std::uint32_t portDelay) const;
+
+    std::uint32_t mainLoopMS;
 
   private:
     ISensor **sensors;

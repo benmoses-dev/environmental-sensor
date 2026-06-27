@@ -30,19 +30,6 @@ static constexpr bool shouldInitI2C() {
 
 SemaphoreHandle_t i2cMutex = nullptr;
 
-static std::uint32_t getMainLoopTime(ISensor **sensors, const std::size_t sensorCount) {
-    std::uint32_t mainLoopTime = std::numeric_limits<std::uint32_t>::max();
-    ISensor *s;
-    for (std::size_t i = 0; i < sensorCount; ++i) {
-        s = sensors[i];
-        mainLoopTime = std::min(mainLoopTime, s->getLoopTime());
-    }
-#if MAIN_DEBUG
-    ESP_LOGI(TAG, "Main loop time: %u", mainLoopTime);
-#endif
-    return mainLoopTime;
-}
-
 static void goToSleep(const std::uint32_t sleepPeriod) {
     if (OPERATING_MODE > 0 && sleepPeriod > 0) {
 #if MAIN_DEBUG
@@ -125,6 +112,32 @@ static void publishResetReason(const esp_reset_reason_t reason, Logger &logger) 
     logger.logInfo(TAG, r.c_str());
 }
 
+static bool initWifi(WIFI &wifi) {
+    if (!wifi.init()) {
+#if MAIN_DEBUG
+        ESP_LOGE(TAG, "WiFi initialisation failed, exiting...");
+#endif
+        return false;
+    }
+    if (!wifi.initTime()) {
+#if MAIN_DEBUG
+        ESP_LOGE(TAG, "Could not synchronise NTP, exiting...");
+#endif
+        return false;
+    }
+    return true;
+}
+
+static bool initMqtt(MQTT &mqtt) {
+    if (!mqtt.init()) {
+#if MAIN_DEBUG
+        ESP_LOGE(TAG, "Could not initialise MQTT, exiting...");
+#endif
+        return false;
+    }
+    return true;
+}
+
 extern "C" void app_main() {
     TickType_t startWifi = xTaskGetTickCount();
     static Environment env;
@@ -184,42 +197,23 @@ extern "C" void app_main() {
         }
     }
 
-    const std::uint32_t mainLoopPeriod = getMainLoopTime(sensors, SENSOR_COUNT);
-    static const QueueHandle_t eventQueue = xQueueCreate(1000, sizeof(Event));
-    static WIFI wifi;
-    static MQTT mqtt;
-    static Logger logger{mqtt};
-    static MainContext context{mainLoopPeriod, sensors, SENSOR_COUNT, eventQueue,
-                               wifi,           mqtt,    logger};
-
-    const std::uint32_t warmupPeriod = context.getWarmupTime();
-    constexpr std::uint32_t WIFI_CONNECT_TIME_MS = 10'000;
-    const std::uint32_t sleepPeriod = static_cast<std::uint32_t>(std::max(
-        static_cast<int>(MEASUREMENT_PERIOD_MS) - static_cast<int>(warmupPeriod) -
-            static_cast<int>(WIFI_CONNECT_TIME_MS),
-        0));
-
 #if MAIN_DEBUG
     const auto sTime = millis();
 #endif
-    if (!wifi.init()) {
+
+    static WIFI wifi;
+    static MQTT mqtt;
+
+    bool wifiInitialised = initWifi(wifi);
+    bool mqttInitialised = wifiInitialised && initMqtt(mqtt);
+    if (!mqttInitialised) {
 #if MAIN_DEBUG
-        ESP_LOGE(TAG, "WiFi initialisation failed, exiting...");
+        ESP_LOGI(TAG, "Restarting...");
 #endif
-        goToSleep(sleepPeriod);
+        esp_restart();
     }
-    if (!wifi.initTime()) {
-#if MAIN_DEBUG
-        ESP_LOGE(TAG, "Could not synchronise NTP, exiting...");
-#endif
-        goToSleep(sleepPeriod);
-    }
-    if (!mqtt.init()) {
-#if MAIN_DEBUG
-        ESP_LOGE(TAG, "Could not initialise MQTT, exiting...");
-#endif
-        goToSleep(sleepPeriod);
-    }
+
+    static Logger logger{mqtt};
     const esp_reset_reason_t reason = esp_reset_reason();
     publishResetReason(reason, logger);
 #if MAIN_DEBUG
@@ -227,6 +221,16 @@ extern "C" void app_main() {
     const auto wifiTime = eTime - sTime;
     ESP_LOGI(TAG, "WiFi time: %u", wifiTime);
 #endif
+
+    static const QueueHandle_t eventQueue = xQueueCreate(1000, sizeof(Event));
+    static MainContext context{sensors, SENSOR_COUNT, eventQueue, wifi, mqtt, logger};
+
+    const std::uint32_t warmupPeriod = context.getWarmupTime();
+    constexpr std::uint32_t WIFI_CONNECT_TIME_MS = 10'000;
+    const std::uint32_t sleepPeriod = static_cast<std::uint32_t>(std::max(
+        static_cast<int>(MEASUREMENT_PERIOD_MS) - static_cast<int>(warmupPeriod) -
+            static_cast<int>(WIFI_CONNECT_TIME_MS),
+        0));
 
     vTaskDelayUntil(&startWifi, pdMS_TO_TICKS(WIFI_CONNECT_TIME_MS));
 
